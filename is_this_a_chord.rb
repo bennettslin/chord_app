@@ -1,11 +1,3 @@
-# This program prints out the interval-class prime form and type of chord,
-# if any, for any sonority inputted by the user in duodecimal form
-
-# Further coding to do:
-# check that pitches aren't repeated;
-# check that only three or four pitches are given;
-# return error for non-duodecimal input
-
 require 'highline/import'
 
 class ChrScale # prints out duodecimal chart for reference
