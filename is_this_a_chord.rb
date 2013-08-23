@@ -1,3 +1,5 @@
+# slightly modified version of calculate_chord.rb to run in console
+
 require 'highline/import'
 
 class ChrScale # prints out duodecimal chart for reference
