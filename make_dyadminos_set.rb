@@ -55,7 +55,7 @@ makeRack
 print "#{@pile.sort} \n"
 print "#{@rack} \n"
 
-replaceRack([0, 1, 2, 3, 4, 5, 6, 7])
+replaceRack([0, 1, 2, 3])
 
 print "#{@pile.sort} \n"
 print "#{@rack} \n"
