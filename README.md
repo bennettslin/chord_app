@@ -39,7 +39,6 @@ Nomenclature
 Updates and draws
 -----------------
 
-* Change all monotiles to center orientation
 * Draw monotile pcs 45 x 90
 * Create steelpan wav files
 * play sounds when ANY click on solid monotile
