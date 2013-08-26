@@ -1,10 +1,12 @@
-Is This a Chord?
-================
+Quick and easy Ruby apps
+=======================
 
-A quick and easy Ruby app
--------------------------
+*Require Highline gem.*
 
-*Requires Highline gem.*
+These are simple algorithms written in preparation for a more complex game that I'm working on just for fun.
+
+Is this a chord?
+----------------
 
 This is a short and simple program that prints out the interval-class prime form and type of chord, if any, of a given set of pitch-classes inputted by the user in duodecimal form.
 
@@ -13,6 +15,13 @@ Further coding to do:
 * check that only three or four pitches are given
 * return an error for non-duodecimal input
 
+Placement of tiles
+------------------
+
+There are 66 dyadminos total. These methods use arrays of hashes to keep track of which dyadminos are on the player's rack, on the gameboard, or still in the pile. They also allow the player to flip and swap the dyadminos on her rack, as well as replacing them for others from the pile.
+
+Further coding to do:
+* create array of hashes for gameboard
 
 Dyadminos!
 ==========
@@ -22,7 +31,7 @@ A musical tile game
 
 *Requires Gosu gem. Run main.rb in console.*
 
-The above algorithm is really for a more complex game I'm working on for fun that will use the Gosu gem. Basically, it's like Scrabble except with musical chords instead of words, and the playing pieces will resemble dominos with a different musical note on each face.
+Basically, it's like Scrabble except with musical chords instead of words, and the playing pieces will resemble dominos with a different musical note on each face.
 
 I'm still figuring out how best to organise my classes and methods in separate files, so sorry if everything's a little scattered right now. Here is my personal schedule for what I need to get done.
 
