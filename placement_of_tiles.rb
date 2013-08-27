@@ -1,16 +1,22 @@
 require 'highline/import'
 
-class Tiles
+class TilePlacement
 
   def initialize
     @pile = Array.new # list of 66 dyadminoes by duodecimal notation
     @rack_num = 6 # will vary by level of difficulty
-    @rack = Array.new # list of dyadminoes in rack by duodecimal notation
-    @board_slots = Hash.new # assigns board dyadminoes to board slots
-    @rack_slots = Hash.new # assigns rack dyadminoes to rack slots
+    @rack = Array.new # list of dyadminoes in rack
+    @board = Array.new # list of dyadminoes on board
+    # @rack and @board might not be necessary, since @board_slots and @rack_slots keep same info
+    @board_slots = Array.new # assigns board dyadminoes to board slots
+    @rack_slots = Array.new # assigns rack dyadminoes to rack slots
+    @filled_board_slots = Array.new # keeps track of which board slots are filled, dots are empty
+    15.times do |i|
+      @filled_board_slots[i] = "." * 15
+    end
   end
 
-  def makePile # generate a pile of 66 dyadminos
+  def createPile # generate a pile of 66 dyadminos
   	(0..11).each do |pc1| # first tile, pcs 0 to e
   		(0..11).each do |pc2| # second tile, pcs 0 to e
   			unless pc1 == pc2 # ensures no dyadmino has tiles of same pc
@@ -19,19 +25,19 @@ class Tiles
   			end
   		end
   	end
+    sortPile
   end
 
   def sortPile
     @pile.sort!
     half = (@pile.count / 2).round
-    print "In pile:\n#{@pile[(0..(half - 1))].join(" ")}\n#{@pile[(half..-1)].join(" ")}\n"
+    print "In the pile:\n#{@pile[(0..(half - 1))].join(" ")}\n#{@pile[(half..-1)].join(" ")}\n"
   end
 
-  def makeRack # takes dyadminos from pile and puts in player's rack
+  def initialRack # takes dyadminos from pile and puts in player's rack
     @pile.shuffle!
     @rack_num.times do |i| # number of dyadminos in player's rack, may change
-      @rack << @pile[i]
-      @pile.delete_at(i)
+      @rack << @pile.pop
     end
     @rack.sort!
     @rack_num.times do |i| # sets up orientation
@@ -49,56 +55,95 @@ class Tiles
         temp_rack_slots[i] = @rack_slots[i][:pcs].reverse
       end
     end
-    sortPile
-    print "On your rack: #{temp_rack_slots.join(" ")} \n"
+    print "On your rack:\n0  1  2  3  4  5\n#{temp_rack_slots.join(" ")} \n"
   end
 
-  def flipDyadmino(slot_num)
-    orientation = @rack_slots[slot_num][:orient]
+  def initialBoard # places random dyadmino from pile randomly onto board to start game
+    @pile.shuffle!
+    @board << @pile.pop
+    temp_orient = rand(4)
+    temp_x = 0
+    temp_y = 0
+    origin_x = rand(15)
+    origin_y = rand(15)
+    @board_slots[0] = { pcs: @board[0], x: temp_x, y: temp_y, orient: temp_orient} # coordinates of lower pc
+    @filled_board_slots[origin_y][origin_x] = @board_slots[0][:pcs][0] # first pc
+    case temp_orient
+    when 0; temp_x = 1
+    when 1; temp_y = 1
+    when 2; temp_x = -1
+    when 3; temp_y = -1
+    end
+    @filled_board_slots[(origin_y + temp_y) % 15][(origin_x + temp_x) % 15] = @board_slots[0][:pcs][1] # first pc
+    onBoard
+  end
+
+  def onBoard
+    print "On the board:\n"
+    15.times do |i|
+      print "#{@filled_board_slots[i]}\n"
+    end
+  end
+
+  def flipDyadmino(pc)
+    orientation = @rack_slots[pc][:orient]
     if orientation == 0
-      @rack_slots[slot_num][:orient] = 180
+      @rack_slots[pc][:orient] = 180
     else
-      @rack_slots[slot_num][:orient] = 0
+      @rack_slots[pc][:orient] = 0
     end
     onRackSlots
   end
 
-  def replaceDyadmino(slot_num) # swaps single dyadmino back into pile
-    @pile.shuffle!
-    temp_pc = @rack_slots[slot_num][:pcs]
-    @rack_slots[slot_num][:pcs] = @pile.shift
-    @pile << temp_pc
+  def swapDyadminos(pc1, pc2)
+    temp_pc = @rack_slots[pc1][:pcs]
+    temp_orient = @rack_slots[pc1][:orient]
+    @rack_slots[pc1][:pcs] = @rack_slots[pc2][:pcs]
+    @rack_slots[pc1][:orient] = @rack_slots[pc2][:orient]
+    @rack_slots[pc2][:pcs] = temp_pc
+    @rack_slots[pc2][:orient] = temp_orient
     onRackSlots
   end
 
-  def swapDyadminos(slot_num, slot_swap)
-    temp_pc = @rack_slots[slot_num][:pcs]
-    temp_orient = @rack_slots[slot_num][:orient]
-    @rack_slots[slot_num][:pcs] = @rack_slots[slot_swap][:pcs]
-    @rack_slots[slot_num][:orient] = @rack_slots[slot_swap][:orient]
-    @rack_slots[slot_swap][:pcs] = temp_pc
-    @rack_slots[slot_swap][:orient] = temp_orient
+  def replaceDyadmino(pc) # swaps single dyadmino back into pile
+    @pile.shuffle!
+    temp_pc = @rack_slots[pc][:pcs]
+    @rack_slots[pc][:pcs] = @pile.shift
+    @pile << temp_pc
+    sortPile
     onRackSlots
   end
+
+  # def playDyadmino(pc)
+
 end
 
-tiles = Tiles.new
-tiles.makePile
-tiles.makeRack
+tiles = TilePlacement.new
+tiles.createPile
+tiles.onBoard
+tiles.initialRack
 
 loop do
-  askUser = ask("Enter slot number followed by 'f' to flip, 'r' to replace, or second slot number to swap\n(e.g., 2f, 4r, 13) or just 'q' to quit: ")
-  slot_num = askUser[0].to_i(12)
-  action = askUser[1]
-  if askUser[0] == "q"
+  askSlot = ask("Enter slot number (0 through 5) or 'q' to quit:")
+  if askSlot[0].downcase == "q"
     break
-  elsif action == "f"
-    tiles.flipDyadmino(slot_num)
-  elsif action == "r"
-    tiles.replaceDyadmino(slot_num)
-  else
-    slot_swap = askUser[1].to_i(12)
-    tiles.swapDyadminos(slot_num, slot_swap)
+  elsif
+    slot_num = askSlot[0].to_i
+    if slot_num.between?(0, 5)
+      askAction = ask("Choose 'f' to flip, 'r' to replace, 'p' to play\nor second slot number to swap.")
+      if askAction[0] == "f"
+        tiles.flipDyadmino(slot_num)
+      elsif askAction[0] == "r"
+        tiles.replaceDyadmino(slot_num)
+      elsif askAction[0] == "p"
+        tiles.playDyadmino(slot_num)
+      else
+        slot_swap = askAction[0].to_i
+        if slot_swap.to_i.between?(0, 5) && slot_swap != slot_num
+          tiles.swapDyadminos(slot_num, slot_swap)
+        end
+      end
+    end
   end
 end
 
