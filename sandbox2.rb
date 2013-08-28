@@ -51,3 +51,25 @@
     end
   end
 
+
+
+# def replaceRack(replaceDyads) # takes in array of dyadmino id numbers from player's rack and replaces only those
+#   rep_num = replaceDyads.count
+#   held_in_hand = Array.new # so that player doesn't get back any of the same dyadminos
+#   @pile.shuffle!
+#   rep_num.times do |i| # puts dyadminos back in pile
+#     held_in_hand << @rack[replaceDyads[(rep_num - 1) - i]]
+#     @rack.delete_at(replaceDyads[(rep_num - 1) - i]) # deletes in reverse to preserve order
+#   end
+#   rep_num.times do |i| # just like makeRack method, so maybe refactor later
+#     @rack << @pile[i]
+#     @pile.delete_at(i)
+#   end
+#   rep_num.times do |i| # now puts those dyadminos in the pile
+#     @pile << held_in_hand[(rep_num - 1) -i]
+#     held_in_hand.delete_at((rep_num - 1) -i)
+#   end
+#   @rack.sort!
+# end
+
+# tiles.replaceRack([0, 1, 2, 3])

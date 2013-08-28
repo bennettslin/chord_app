@@ -3,7 +3,7 @@ Quick and easy Ruby apps
 
 *Require Highline gem.*
 
-These are simple algorithms written in preparation for a more complex game that I'm working on just for fun.
+These short apps will provide the game logic for a musical tile game that I'm working on just for fun.
 
 Is this a chord?
 ----------------
@@ -18,16 +18,20 @@ Further coding to do:
 Placement of tiles
 ------------------
 
-There are 66 dyadminos total. These methods use arrays of hashes to keep track of which dyadminos are on the player's rack, on the gameboard, or still in the pile. They also allow the player to flip and swap the dyadminos on her rack, as well as replacing them for others from the pile.
+There are 66 dyadminos total. These methods use arrays of hashes to keep track of which dyadminos are on the player's rack, on the gameboard, or still in the pile. They also allow the player to flip and swap the dyadminos on her rack, replace them for others in the pile, or place them on the gameboard.
 
 Further coding to do:
-* create array of hashes for gameboard
+* combine dyadmino-placement methods with chord-identifying methods so that only legal chords are allowed to be played on the board.
+* calculate score of chords played.
+* turn into hex board
 
 Dyadminos!
 ==========
 
 A musical tile game
 -------------------
+
+*Note:* After tinkering around with the Gosu gem, I've decided it would be more productive to dive straight into the RubyMotion toolkit instead. Since it will take me a while to get up to speed with RubyMotion, I'm just going to get all the game logic done first, then come back to programming the interface.
 
 *Requires Gosu gem. Run main.rb in console.*
 
