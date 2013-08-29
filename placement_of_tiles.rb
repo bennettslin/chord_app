@@ -5,7 +5,7 @@ class TilePlacement
   def initialize
     @pile = Array.new # list of 66 dyadminoes by duodecimal notation
     @rack_num = 6 # will vary by level of difficulty
-    @board_size = 10 # will vary with experimentation (15 for now)
+    @board_size = 16 # will vary with experimentation (15 for now)
     @board_slots = Array.new # assigns board dyadminoes to board slots for game logic
     @rack_slots = Array.new # assigns rack dyadminoes to rack slots
     @filled_board_slots = Array.new # keeps track of which board slots are filled, dots are empty
@@ -53,7 +53,7 @@ class TilePlacement
   def intoRack(slot_num) # adds random dyadmino from pile, if available
     # deletes original dyadmino in rack slot EITHER WAY
     if @pile.count >= 1
-      @rack_slots[slot_num] = { pcs: fromPile, orient: rand(1) }
+      @rack_slots[slot_num] = { pcs: fromPile, orient: rand(2) }
       # randomize whether lower pc is at top or bottom
     else
       @rack_slots.delete_at(slot_num) # automatically reordered
@@ -125,8 +125,7 @@ class TilePlacement
 # Helper methods
 
   def orientToBoard(top_x, top_y, rack_orient, board_orient) # changes rack orient to board coord
-    bottom_x = top_x # temporarily makes 2nd pc coords the same as 1st
-    bottom_y = top_y
+    bottom_x, bottom_y = top_x, top_y # temporarily makes bottom pc coords same as top
     case board_orient # coords for two pcs will be off by one in one axis
     # (for hex board, there will be six orients)
       when 0; bottom_y = (top_y + 1) % @board_size
@@ -149,13 +148,28 @@ class TilePlacement
     @filled_board_slots[lower_y][lower_x] == "." && @filled_board_slots[higher_y][higher_x] == "."
   end
 
+  def centerBoard # shows center of smallest rectangle that encloses all played dyadminos
+    # only for view purposes, data is unaffected
+    min_x = min_y = @board_size - 1
+    max_x = max_y = 0
+    @board_size.times do |j|
+      @board_size.times do |i|
+        if @filled_board_slots[j][i] != "."
+          min_x, min_y, max_x, max_y = [min_x, i].min, [min_y, j].min, [max_x, i].max, [max_y, j].max
+        end
+      end
+    end
+    center_x, center_y = (max_x + min_x) / 2, (max_y + min_y) / 2
+    print "center of board is at #{center_x}, #{center_y}\n"
+  end
+
 # Views
 
   def showPile # shows sorted pile
     if @pile.count >= 1
       @pile.sort!
       if @pile.count >= 20
-        half = (@pile.count / 2).round
+        half = (@pile.count / 2)
         print "In the pile:\n#{@pile[(0..half)].join(" ")}\n#{@pile[((half + 1)..-1)].join(" ")}\n"
       else
         print "In the pile:\n#{@pile.join(" ")}\n"
@@ -180,9 +194,14 @@ class TilePlacement
   end
 
   def showBoard
-    print "On the board:\n"
+    centerBoard
+    print " "
     @board_size.times do |i|
-      print "#{@filled_board_slots[i]}\n"
+      print "#{i.to_s(36)}"
+    end
+    print "\n"
+    @board_size.times do |j|
+      print "#{j.to_s(36)}#{@filled_board_slots[j]}\n"
     end
   end
 
@@ -223,7 +242,7 @@ loop do
         ask_top_x = ask("x-coordinate of top pc:")
         ask_top_y = ask("y-coordinate of top pc:")
         ask_board_orient = ask("orientation (0 through 3):")
-        tiles.playDyadmino(slot_num, ask_top_x.to_i, ask_top_y.to_i, ask_board_orient.to_i)
+        tiles.playDyadmino(slot_num, ask_top_x.to_i(36), ask_top_y.to_i(36), ask_board_orient.to_i)
         # game program ALWAYS orients each dyadmino based on lower and higher pcs
         # however, player's understanding of orientation is based on top and bottom pcs
       else
