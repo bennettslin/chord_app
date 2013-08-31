@@ -3,14 +3,15 @@ require 'highline/import'
 class TilePlacement
 
   def initialize
+    @rules = 3 # 0:folk, 1:rock, 2:classical with rock, 3: jazz, 4:classical with jazz
+    # 5:octatonic, 6:hexatonic and whole-tone (these include inversions)
     @pile = Array.new # list of 66 dyadminoes by duodecimal notation
     @rack_num = 6 # will vary by level of difficulty
     @board_size = 16 # will vary with experimentation (15 for now)
     @board_slots = Array.new # assigns board dyadminoes to board slots for game logic
     @rack_slots = Array.new # assigns rack dyadminoes to rack slots
     @filled_board_slots = Array.new # keeps track of which board slots are filled, dots are empty
-    @rules = 0 # 0:folk, 1:rock, 2:jazz, 3:classical with rock, 4:classical with jazz
-    # 5:octatonic, 6:hexatonic and whole-tone (these include inversions)
+
     @board_size.times do |i|
       @filled_board_slots[i] = "." * @board_size
     end
@@ -21,9 +22,10 @@ class TilePlacement
   def createPile # generate a pile of 66 dyadminos
     (0..11).each do |pc1| # first tile, pcs 0 to e
       (0..11).each do |pc2| # second tile, pcs 0 to e
-        unless pc1 == pc2 # ensures no dyadmino has tiles of same pc
-          thisDyad = [pc1.to_s(12), pc2.to_s(12)].sort.join.to_sym #converts to duodec. string
-          @pile << thisDyad unless @pile.include?(thisDyad) #no duplicates
+        unless pc1 == pc2 || @rules == 0 && [1, 2, 6].include?((pc1 - pc2).abs) ||
+          [1, 2].include?(@rules) && (pc1 - pc2).abs == 1
+          thisDyad = [pc1.to_s(12), pc2.to_s(12)].sort.join.to_sym
+          @pile << thisDyad unless @pile.include?(thisDyad)
         end
       end
     end
