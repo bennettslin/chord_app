@@ -32,60 +32,42 @@ class ChrScale # prints out duodecimal chart for reference
 end
 
 class Chord
-	# argument is duodecimal string, i.e. '4b70'
-	# inversions is false for tonal chords, true for post-tonal chords
-	def initialize(this_chord, inversions)
+	def initialize(this_chord) # argument is duodecimal string, i.e. '4b70'
 		@this_chord = this_chord
-		@inversions = inversions
 	end
 
 	def getICPrimeForm # puts chord in ic prime form (not pc prime form!)
-		card = @this_chord.length
-		pcn_form, icn_form, icn_sonorities, icp_sonorities = Array.new(4) { [] }
-		icp_form = "" # ic prime form
+
+		card = @this_chord.length # finds cardinality (can only be 3 or 4)
+		pcn_form, icn_form = Array.new(2) { [] } # pc, ic normal forms
+		@icp_form = "" # ic prime form
+
 		@this_chord.split("").each do |i| # puts in pitch-class normal form
 			pcn_form << i.to_i(12) # converts from duodecimal string
 		end
-		pcn_form.sort! # puts pcs in arbitrary sequential order
+		pcn_form.sort! # puts pcs in sequential order
 
 		# this algorithm won't necessarily work with more than four pcs,
 		# but we're fine since four pcs is the maximum for this game
 		card.times do |i| # puts in ic normal form
 			icn_form[i] = (pcn_form[(i + 1) % card] - pcn_form[i]) % 12
 		end
-
-		icn_sonorities[0] = icn_form
-		if @inversions == true
-			icn_sonorities[1] = icn_form.reverse
-		end
-
-		icn_sonorities.count.times do |i|
-			this_sonority = icn_sonorities[i]
-			smallest_ics_index = this_sonority.each_index.select{ |index| this_sonority[index] == this_sonority.min }
-			# first_ic_index = smallest_ics_index[0]
-			temp_max = first_ic_index = 0 # just declaring variables
-			smallest_ics_index.each do |ic|
-				temp_gap = this_sonority[(ic - 1) % card]
-				if temp_gap > temp_max
-					temp_max = temp_gap
-					first_ic_index = ic
-				end
+		smallest_ics_index = icn_form.each_index.select{ |i| icn_form[i] == icn_form.min }
+		# first_ic_index = smallest_ics_index[0]
+		temp_max = first_ic_index = 0 # just declaring variables
+		smallest_ics_index.each do |ic|
+			temp_gap = icn_form[(ic - 1) % card]
+			if temp_gap > temp_max
+				temp_max = temp_gap
+				first_ic_index = ic
 			end
-			temp_icp_form = ""
-			card.times do |j| # puts in ic prime form
-				temp_icp_form << this_sonority[(first_ic_index + j) % card].to_s(12) # rotates lineup
-			end
-
-			icp_sonorities[i] = temp_icp_form
 		end
 
-		if @inversions == true
-			icp_form = [icp_sonorities[0], icp_sonorities[1]].min
-		else
-			icp_form = icp_sonorities[0]
+		card.times do |i| # puts in ic prime form
+			@icp_form << icn_form[(first_ic_index + i) % card].to_s(12) # rotates lineup
 		end
 
-		puts "The interval-class prime form is (#{icp_form})."
+		puts "The interval-class prime form is (#{@icp_form})."
 	end
 
 	def whatChord # identifies what type of chord, if any
@@ -125,7 +107,7 @@ class UserPrompt
 			elsif askUser[0].downcase == "n"
 				ChrScale.run
 			else
-				userChord = Chord.new(askUser, true)
+				userChord = Chord.new(askUser)
 				userChord.getICPrimeForm
 				userChord.whatChord
 			end
