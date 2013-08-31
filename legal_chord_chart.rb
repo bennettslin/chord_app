@@ -1,4 +1,4 @@
-# this just makes a chart for me to see how prevalent each sonority is
+# This just makes a chart for me to see how prevalent each sonority is
 # under each set of rules. It's not great code, ha.
 
 class Chord
@@ -143,9 +143,23 @@ class HexMembership
 
 end
 
+
+# trichords and tetrachords
 pc_form_array = %w(012 013 014 015 016 024 025 026 027 036 037 048 0123 0124 0125
 										0126 0127 0134 0135 0136 0137 0145 0146 0147 0148 0156 0157 0158
 										0167 0235 0236 0237 0246 0247 0248 0257 0258 0268 0347 0358 0369)
+
+# pentachords
+# pc_form_array = %w(01234 01235 01236 01237 01245 01246 01247 01248 01256 01257 01258
+# 										01267 01268 01346 01347 01348 01356 01357 01358 01367 01368 01369
+# 										01457 01458 01468 01469 01478 01568 02346 02347 02357 02358 02368
+# 										02458 02468 02469 02479 03458)
+
+#hexachords
+# pc_form_array = %w(012345 012346 012347 012348 012357 012358 012367 012368 012369
+# 										012378 012458 012468 012469 012478 012479 012569 012578 012579
+# 										012678 013457 013458 013469 013479 013579 013679 023679 014568
+# 										014579 014589 023457 023468 023469 023579 024579 02468a)
 
 # gets all ic prime forms of pc prime forms
 ic_form_w_inversion = Array.new

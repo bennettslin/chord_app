@@ -3,10 +3,18 @@ require 'highline/import'
 class TilePlacement
 
   def initialize
-    @rules = 3 # 0:folk, 1:rock, 2:classical with rock, 3: jazz, 4:classical with jazz
+    # Bennett: have rules be based on user input
+    @rule = 3 # 0:folk, 1:rock, 2:classical with rock, 3: jazz, 4:classical with jazz
     # 5:octatonic, 6:hexatonic and whole-tone (these include inversions)
+    case @rule # number of dyadminos in rack will vary by rules
+      when 0; @rack_num = 6
+      when 1 || 2; @rack_num = 8
+      when 3 || 4; @rack_num = 10
+      when 5; @rack_num = 5
+      when 6; @rack_num = 6
+    else
+    end
     @pile = Array.new # list of 66 dyadminoes by duodecimal notation
-    @rack_num = 6 # will vary by level of difficulty
     @board_size = 16 # will vary with experimentation (15 for now)
     @board_slots = Array.new # assigns board dyadminoes to board slots for game logic
     @rack_slots = Array.new # assigns rack dyadminoes to rack slots
@@ -22,8 +30,8 @@ class TilePlacement
   def createPile # generate a pile of 66 dyadminos
     (0..11).each do |pc1| # first tile, pcs 0 to e
       (0..11).each do |pc2| # second tile, pcs 0 to e
-        unless pc1 == pc2 || @rules == 0 && [1, 2, 6].include?((pc1 - pc2).abs) ||
-          [1, 2].include?(@rules) && (pc1 - pc2).abs == 1
+        unless pc1 == pc2 || @rule == 0 && [1, 2, 6].include?((pc1 - pc2).abs) ||
+          [1, 2].include?(@rule) && (pc1 - pc2).abs == 1
           thisDyad = [pc1.to_s(12), pc2.to_s(12)].sort.join.to_sym
           @pile << thisDyad unless @pile.include?(thisDyad)
         end
