@@ -9,6 +9,8 @@ class TilePlacement
     @board_slots = Array.new # assigns board dyadminoes to board slots for game logic
     @rack_slots = Array.new # assigns rack dyadminoes to rack slots
     @filled_board_slots = Array.new # keeps track of which board slots are filled, dots are empty
+    @rules = 0 # 0:folk, 1:rock, 2:jazz, 3:classical with rock, 4:classical with jazz
+    # 5:octatonic, 6:hexatonic and whole-tone (these include inversions)
     @board_size.times do |i|
       @filled_board_slots[i] = "." * @board_size
     end

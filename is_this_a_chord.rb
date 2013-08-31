@@ -33,36 +33,36 @@ end
 
 class Chord
 	# argument is duodecimal string, i.e. '4b70'
-	# inversions is false for tonal chords, true for post-tonal chords
+	# inversions is false for tonal, true for post-tonal
 	def initialize(this_chord, inversions)
 		@this_chord = this_chord
 		@inversions = inversions
 	end
 
-	def getICPrimeForm # puts chord in ic prime form (not pc prime form!)
+	def getICPrimeForm # puts sonority in ic prime form (not pc prime form!)
+		# this method won't necessarily work for sonorities of more than four pcs,
+		# but for our purposes it's fine since four pcs is the maximum for this game.
 		card = @this_chord.length
 		pcn_form, icn_form, icn_sonorities, icp_sonorities = Array.new(4) { [] }
 		icp_form = "" # ic prime form
-		@this_chord.split("").each do |i| # puts in pitch-class normal form
+		@this_chord.split("").each do |i| # puts in pc normal form
 			pcn_form << i.to_i(12) # converts from duodecimal string
 		end
 		pcn_form.sort! # puts pcs in arbitrary sequential order
 
-		# this algorithm won't necessarily work with more than four pcs,
-		# but we're fine since four pcs is the maximum for this game
+		# converts pc normal form to ic normal form
 		card.times do |i| # puts in ic normal form
 			icn_form[i] = (pcn_form[(i + 1) % card] - pcn_form[i]) % 12
 		end
 
+		# converts ic normal form to ic prime form, and gives the more compact
+		# ic prime form if there are inversions
 		icn_sonorities[0] = icn_form
-		if @inversions == true
-			icn_sonorities[1] = icn_form.reverse
-		end
-
+		icn_sonorities[1] = icn_form.reverse if @inversions
 		icn_sonorities.count.times do |i|
 			this_sonority = icn_sonorities[i]
-			smallest_ics_index = this_sonority.each_index.select{ |index| this_sonority[index] == this_sonority.min }
-			# first_ic_index = smallest_ics_index[0]
+			smallest_ics_index =
+				this_sonority.each_index.select{ |index| this_sonority[index] == this_sonority.min }
 			temp_max = first_ic_index = 0 # just declaring variables
 			smallest_ics_index.each do |ic|
 				temp_gap = this_sonority[(ic - 1) % card]
@@ -75,17 +75,13 @@ class Chord
 			card.times do |j| # puts in ic prime form
 				temp_icp_form << this_sonority[(first_ic_index + j) % card].to_s(12) # rotates lineup
 			end
-
 			icp_sonorities[i] = temp_icp_form
 		end
 
-		if @inversions == true
-			icp_form = [icp_sonorities[0], icp_sonorities[1]].min
-		else
-			icp_form = icp_sonorities[0]
-		end
+		@inversions ? icp_form =
+			[icp_sonorities[0], icp_sonorities[1]].min : icp_form = icp_sonorities[0]
 
-		puts "The interval-class prime form is (#{icp_form})."
+		puts "For #{@this_chord}, the interval-class prime form is (#{icp_form})."
 	end
 
 	def whatChord # identifies what type of chord, if any
