@@ -55,6 +55,6 @@
                         "...370a...",
                         "....2.....",
                         "..........",
-                        ".........."]
+                        ".....52..."]
 
-print "The method returns #{scanSurroundingSlots(3, 6, 4, 6)}."
+print "The method returns #{scanSurroundingSlots(5, 8, 6, 8)}."

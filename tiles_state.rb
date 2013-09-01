@@ -1,7 +1,7 @@
 class TilesState
 
   def initialize(rule)
-    @legal_chords = LegalChords.new(rule).createLegalChords
+    @legal_chords, @legal_incompletes = Array.new(2) { [] }
     @rule = rule
     case @rule # number of dyadminos in rack will vary by rules
       when 0; @rack_num = 6
@@ -19,12 +19,41 @@ class TilesState
     @board_size.times do |i|
       @filled_board_slots[i] = "." * @board_size
     end
+    createLegalChords
     createPile
     initialRack
     initialBoard
     showPile
     showBoard
     showRack
+  end
+
+  def createLegalChords
+    if @rule < 5 # tonal chords
+      superset_chords = [345, 354, 2334, 2343, 2433, 336, 444, 3333, 1344, 1434, 1443, 246, 2424]
+      # superset_sevenths = [2334, 2343, 2433, 3333, 1344, 1434, 1443, 2424]
+      superset_incompletes = [264, 237, 336, 273, 246, 174, 138, 147, 183]
+      case @rule
+      when 0
+        @legal_chords = superset_chords[0, 5]
+      when 1, 2
+        @legal_chords = superset_chords[0, 8]
+      when 3, 4
+        @legal_chords = superset_chords[0, 11]
+      else
+      end
+      [11, 12].each { |i| @legal_chords.push(superset_chords[i]) } if [2, 4].include?(@rule)
+      if @rule < 3
+        @legal_incompletes = superset_incompletes[0, 5]
+      else
+        @legal_incompletes = superset_incompletes
+      end
+    elsif @rule == 5 # octatonic membership
+      @legal_chords = [129, 138, 156, 237, 246, 336, 345, 1218, 1236, 1245, 1326, 1335, 1515,
+        1272, 1263, 2334, 2424, 1353, 2343, 3333]
+    elsif @rule == 6 # hexatonic and whole-tone
+      @legal_chords = [138, 147, 228, 246, 345, 444, 1317, 1344, 1434, 2226, 2244, 2424, 1353]
+    end
   end
 
 # Pile state changes
@@ -39,10 +68,6 @@ class TilesState
         end
       end
     end
-    # for dev
-    # 57.times do
-    #   @pile.pop
-    # end
   end
 
   def fromPile # draws random dyadmino from pile
@@ -122,16 +147,46 @@ class TilesState
   end
 
   def playDyadmino(slot_num, top_x, top_y, board_orient)
+    this_sonority = Array.new
     # converts rack orient to board coord, checks if board slots are free,
     # then refills rack if possible
     lower_x, lower_y, higher_x, higher_y =
       orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
-    if boardSlotsEmpty?(lower_x, lower_y, higher_x, higher_y)
+    unless boardSlotsEmpty?(lower_x, lower_y, higher_x, higher_y)
+      print "You can't put one dyadmino over another.\n"
+        return false
+    else
+      # this isn't great code; refactor it
+      lower_pc = @rack_slots[slot_num][:pcs][0]
+      higher_pc = @rack_slots[slot_num][:pcs][1]
+      this_sonority =
+        scanSurroundingSlots(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
+      if this_sonority == :illegal_maxed_out_row
+        print "You can't have more than the max number in a row.\n"
+        return false
+      elsif this_sonority == :illegal_semitones
+        print "You can't have semitones under folk or rock rules.\n"
+        return false
+      elsif this_sonority == :illegal_repeated_pcs
+        print "You can't have more than one of the same pc in any given row.\n"
+        return false
+      else
+        this_sonority.each do |son|
+          if son.length >= 3 && checkLegalChord(son)
+            print "[#{son}] is legal and yields points.\n"
+          elsif son.length < 3
+            # do nothing
+          elsif son.length == 3 && checkLegalIncomplete(son)
+            print "[#{son}] is legal but yields no points.\n"
+          else
+            print "[#{son}] isn't a legal sonority.\n"
+            return false
+          end
+        end
+      end
       ontoBoard(@rack_slots[slot_num][:pcs], lower_x, lower_y, higher_x, higher_y)
       showBoard
       intoRack(slot_num)
-    else
-      print "Occupied.\n"
     end
     showRack
   end
@@ -177,50 +232,173 @@ class TilesState
     print "center of board is at #{center_x}, #{center_y}\n"
   end
 
-  def scanSurroundingSlots(lower_x, lower_y, higher_x, higher_y)
-    # the two pcs share one axis, so there are three sonorities to check
-    # hex board will have FIVE sonorities to check, use mod 3
-    first_sonority = checkLegalSonority(lower_x, lower_y, 0) # check vertical
-    second_sonority = checkLegalSonority(lower_x, lower_y, 1) # check horizontal
-    lower_x == higher_x ? axis_to_check = 1 : axis_to_check = 0
-    third_sonority = checkLegalSonority(higher_x, higher_y, axis_to_check)
-    return first_sonority, second_sonority, third_sonority
-  end
 
-  def checkLegalSonority(x, y, axis_to_check)
-  # ONLY checks if no repeated pcs or more than the maximum allowed in a row,
-  # and no semitone dyads if playing by folk or rock rules
+
+  # def scanSurroundingSlots(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
+  #   # the two pcs share one axis, so there are three sonorities to check
+  #   # hex board will have FIVE sonorities to check, use mod 3
+  #   first_sonority = checkLegalSonority(lower_pc, lower_x, lower_y, 0) # check vertical
+  #   second_sonority = checkLegalSonority(lower_pc, lower_x, lower_y, 1) # check horizontal
+  #   lower_x == higher_x ? axis_to_check = 1 : axis_to_check = 0
+  #   third_sonority = checkLegalSonority(higher_pc, higher_x, higher_y, axis_to_check)
+  #   print first_sonority, second_sonority, third_sonority
+  #   return first_sonority, second_sonority, third_sonority
+  # end
+
+  # code is kept simple so as not to confuse me when I add a third axis for the hex board
+  def scanSurroundingSlots(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
+    # only checks if dyadmino placement is illegal for physical reasons:
+    # repeated pcs, more than the maximum allowed in a row, and semitones under folk or rock rules
     case @rule
       when (0..4) ; max_card = 4
       when 5; max_card = 8
       when 6; max_card = 6
     end
-    temp_sonority = [@filled_board_slots[y][x]]
-    [-1, 1].each do |i| # checks in both directions
-      temp_x, temp_y = x, y
-      while @filled_board_slots[temp_y][temp_x] != "."
-        if axis_to_check == 0 # 0 = checking vertically
-          (temp_y += i) % @board_size
-        else # 1 = checking horizontally; on hex board, there will be a third condition
-          (temp_x += i) % @board_size
-        end
-        temp_pc = @filled_board_slots[temp_y][temp_x]
-        if temp_sonority.count > max_card || temp_sonority.include?(temp_pc)
-          return false # repeated pcs, or more than max
-        elsif
-          @filled_board_slots[temp_y][temp_x] == "."
-        else
-          if @rule < 3
+    array_of_sonorities = Array.new
+    # each array is pc, x, y, axis to check
+    directions_to_check = [[lower_pc, lower_x, lower_y, "ver"], [lower_pc, lower_x, lower_y, "hor"],
+                            [higher_pc, higher_x, higher_y, ""]]
+    if lower_x == higher_x # doesn't check parallel axis twice
+      directions_to_check[2][3] = "hor"
+    elsif lower_y == higher_y
+      directions_to_check[2][3] = "ver" # on hex board there will be five directions
+    end
+    # lower_vertical, lower_horizontal, higher_vertical, higher_horizontal
+    directions_to_check.each do |origin|
+      temp_sonority = [origin[0]]
+      [-1, 1].each do |vector| # checks in both directions
+        temp_pc, temp_x, temp_y = "", origin[1], origin[2]
+        while temp_pc != "."
+          # establishes that the pc in the temporary container is NOT the empty slot
+          # where the dyadmino might go
+          if origin[3] == "ver" # checking vertically
+            temp_y = (temp_y + vector) % @board_size
+          elsif origin[3] == "hor" # checking horizontally; on hex board, there will be a third condition
+            temp_x = (temp_x + vector) % @board_size
+          end
+          if temp_x == lower_x && temp_y == lower_y
+            temp_pc = lower_pc
+          elsif temp_x == higher_x && temp_y == higher_y
+            temp_pc = higher_pc
+          else
+            temp_pc = @filled_board_slots[temp_y][temp_x]
+          end
+          if temp_sonority.count > max_card
+            return :illegal_maxed_out_row
+          elsif temp_sonority.include?(temp_pc) && temp_pc != "."
+            return :illegal_repeated_pcs
+          elsif @rule < 3 # ensures there are no semitones when playing by folk and rock rules
             [-1, 1].each do |j|
-              return false if temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12))
+              if temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12)) && temp_pc != "."
+                return :illegal_semitones
+              end
             end
           end
-          i == -1 ? temp_sonority.unshift(@filled_board_slots[temp_y][temp_x]) :
-            temp_sonority.push(@filled_board_slots[temp_y][temp_x])
+          if temp_pc != "."
+            vector == -1 ? temp_sonority.unshift(temp_pc) :
+            temp_sonority.push(temp_pc)
+          end
         end
       end
+      array_of_sonorities << temp_sonority.sort!.join
     end
-    return temp_sonority.join
+    return array_of_sonorities
+  end
+
+  def checkLegalIncomplete(sonority)
+    icp_form, fake_root = getICPrimeForm(sonority)
+    whether_legal_incomplete = isThisSonorityLegal?(icp_form, @legal_incompletes)
+    return whether_legal_incomplete
+  end
+
+  def checkLegalChord(sonority)
+    icp_form, fake_root = getICPrimeForm(sonority)
+    whether_legal_chord = isThisSonorityLegal?(icp_form, @legal_chords)
+    if whether_legal_chord
+      # print "This is #{whether_legal_chord ? "legal" : "illegal"} under rule #{@rule}.\n"
+      real_root, chord_type = getRootAndType(icp_form, fake_root)
+      print "This is a #{real_root} #{chord_type}.\n"
+    end
+    return whether_legal_chord
+  end
+
+  def isThisSonorityLegal?(icp_form, array_of_sonorities)
+    array_of_sonorities.include?(icp_form.to_i)
+  end
+
+# game logic
+
+  def getICPrimeForm(sonority) # puts sonority in ic prime form (not pc prime form!)
+    # this method won't necessarily work for sonorities of more than four pcs,
+    # but for our purposes it's fine since four pcs is the maximum for this game.
+    icp_form = String.new
+    fake_root = 0 # not always the musical root, just used to id unique chord
+    card = sonority.length
+    pcn_form, icn_form, icn_sonorities, icp_sonorities = Array.new(4) { [] }
+
+    sonority.split("").each do |i| # puts in pc normal form
+      pcn_form << i.to_i(12) # converts from duodecimal string
+    end
+    pcn_form.sort! # puts pcs in arbitrary sequential order
+
+    # converts pc normal form to ic normal form
+    card.times do |i| # puts in ic normal form
+      icn_form[i] = (pcn_form[(i + 1) % card] - pcn_form[i]) % 12
+    end
+
+    # converts ic normal form to ic prime form, and gives the more compact
+    # ic prime form if there are post-tonal
+    icn_sonorities[0] = icn_form
+    icn_sonorities[1] = icn_form.reverse if @rule.between?(5, 6)
+    icn_sonorities.count.times do |i|
+      this_sonority = icn_sonorities[i]
+      smallest_ics_index =
+        this_sonority.each_index.select{ |j| this_sonority[j] == this_sonority.min }
+        # selects however many index values there are of the smallest ic
+      temp_max = first_ic_index = 0 # just declaring variables
+      smallest_ics_index.each do |ic|
+        temp_gap = this_sonority[(ic - 1) % card]
+        if temp_gap > temp_max
+          temp_max = temp_gap
+          first_ic_index = ic
+        end
+      end
+
+      fake_root = pcn_form[first_ic_index] unless @rule.between?(5, 6)
+      temp_icp_form = ""
+      card.times do |k| # puts in ic prime form
+        temp_icp_form << this_sonority[(first_ic_index + k) % card].to_s(12) # rotates lineup
+      end
+      icp_sonorities[i] = temp_icp_form
+    end
+
+    @rule.between?(5, 6) ? icp_form =
+      [icp_sonorities[0], icp_sonorities[1]].min : icp_form = icp_sonorities[0]
+    print "The interval-class prime form of [#{sonority}] is (#{icp_form}).\n"
+    return icp_form, fake_root
+  end
+
+  def getRootAndType(icp_form, fake_root) # returns string for real root
+    real_root = String.new
+    # refactor? same array as superset of tonal ics in method to create array of all legal chords
+    tonal_ics = [345, 354, 2334, 2343, 2433, 336, 444, 3333, 1344, 1434, 1443, 246, 2424]
+    t_names = ["minor triad", "major triad", "half-diminished seventh", "minor seventh", "dominant seventh",
+              "diminished triad", "augmented triad", "fully diminished seventh", "minor-major seventh",
+              "major seventh", "augmented major seventh", "Italian sixth", "French sixth"]
+    t_adjust_root = [0, 8, 2, 2, 2, 0, 0, 0, 1, 1, 1, 2, 2] # adds to fake root to find correct root
+    # for each symmetric chord, first value is ics, second value is mod number
+    t_symmetric = [[444, 3333, 2424], [4, 3, 6]]
+    t_index = tonal_ics.index(icp_form.to_i)
+    sym_index = t_symmetric[0].index(tonal_ics[t_index])
+    if sym_index != nil
+      mod = t_symmetric[1][sym_index]
+      (12 / mod).times do |i|
+        real_root << (((fake_root + t_adjust_root[t_index])% mod) + (mod * i)).to_s(12)
+      end
+    else
+      real_root = ((t_adjust_root[t_index] + fake_root) % 12).to_s(12)
+    end
+    return real_root, t_names[t_index]
   end
 
 # Views

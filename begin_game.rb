@@ -1,16 +1,14 @@
 require "highline/import"
 
 require_relative "tiles_state"
-require_relative "get_chord_status"
-require_relative "legal_chords"
 
-sonority = "0246"
-rule = 2 # rule will eventually be based on user input
+rule = 0 # rule will eventually be based on user input
 # rules are 0:folk, 1:rock, 2:rock with classical, 3: jazz, 4:jazz with classical
 # 5:octatonic, 6:hexatonic and whole-tone (post-tonal rules include inversions)
 
 # legal chords array is stored in game_tiles instance so that they're only called once per game match
 game_tiles = TilesState.new(rule)
+# print game_tiles.checkLegalChord("047")
 
 loop do
   puts "*" * 72
