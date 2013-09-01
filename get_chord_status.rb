@@ -5,35 +5,11 @@ class GetChordStatus
   def initialize(this_chord, rule)
     @this_chord = this_chord
     @rule = rule
-    @legal_ics = Array.new
-    # ! ultimately, put this method in its own class and call it once for each match
-    createLegalChords
   end
 
-  def createLegalChords # creates array of which chords are legal
-    if @rule < 5 # tonal chords
-      superset_ics = [345, 354, 2334, 2343, 2433, 336, 444, 3333, 1344, 1434, 1443, 246, 2424]
-      case @rule
-      when 0
-        @legal_ics = superset_ics[0, 5]
-      when 1, 2
-        @legal_ics = superset_ics[0, 8]
-      when 3, 4
-        @legal_ics = superset_ics[0, 11]
-      else
-      end
-      [11, 12].each { |i| @legal_ics.push(superset_ics[i]) } if [2, 4].include?(@rule)
-    elsif @rule == 5 # octatonic membership
-      @legal_ics = [129, 138, 156, 237, 246, 336, 345, 1218, 1236, 1245, 1326, 1335, 1515,
-        1272, 1263, 2334, 2424, 1353, 2343, 3333]
-    elsif @rule == 6 # hexatonic and whole-tone
-      @legal_ics = [138, 147, 228, 246, 345, 444, 1317, 1344, 1434, 2226, 2244, 2424, 1353]
-    end
-  end
-
-  def isThisAChord
+  def isThisAChord(game_chords)
     icp_form, fake_root = getICPrimeForm
-    legal_chord = isThisLegal?(icp_form)
+    legal_chord = isThisLegal(icp_form, game_chords)
     print "This is #{legal_chord ? "legal" : "illegal"} under rule #{@rule}.\n"
     if @rule < 5
       real_root, chord_type = getRootAndType(icp_form, fake_root)
@@ -91,8 +67,8 @@ class GetChordStatus
     return icp_form, fake_root
   end
 
-  def isThisLegal?(icp_form)
-    @legal_ics.include?(icp_form.to_i)
+  def isThisLegal(icp_form, game_chords)
+    game_chords.include?(icp_form.to_i)
   end
 
   def getRootAndType(icp_form, fake_root) # returns string for real root
@@ -118,6 +94,3 @@ class GetChordStatus
     return real_root, t_names[t_index]
   end
 end
-
-a = GetChordStatus.new("0246", 6)
-print a.isThisAChord
