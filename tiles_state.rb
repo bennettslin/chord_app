@@ -4,20 +4,25 @@ class TilesState
     @legal_chords, @legal_incompletes = Array.new(2) { [] }
     @rule = rule
     case @rule # number of dyadminos in rack will vary by rules
-      when 0; @rack_num = 6
-      when 1, 2; @rack_num = 8
-      when 3, 4; @rack_num = 10
-      when 5; @rack_num = 5
-      when 6; @rack_num = 6
+      when 0; @rack_num = 6 # folk
+      when 1, 2; @rack_num = 8 # rock, rock with classical
+      when 3, 4; @rack_num = 10 # jazz, jazz with classical
+      when 5; @rack_num = 5 # octatonic
+      when 6; @rack_num = 6 # hexatonic and whole-tone
     else
     end
     @pile = Array.new # list of 66 dyadminoes by duodecimal notation
-    @board_size = 8 # will vary with experimentation (15 for now)
-    @board_slots = Array.new # assigns board dyadminoes to board slots for game logic
+    # board is hexagonal with x and y axes; the z axis is the (x = -y) diagonal line
+    @board_size = 8 # mod number, kept small for dev purposes; for production,
+    # board size should be large enough that players won't notice when edges wrap back around
+    @board_spaces = Array.new # assigns board dyadminoes to board spaces for game logic
     @rack_slots = Array.new # assigns rack dyadminoes to rack slots
-    @filled_board_slots = Array.new # keeps track of which board slots are filled, dots are empty
-    @board_size.times do |i|
-      @filled_board_slots[i] = "." * @board_size
+    @filled_board_spaces = Array.new # keeps track of which board slots are filled
+    # y-axis value is the first argument, x-axis value is the second
+    @board_size.times do # creates array of arrays of :empty symbol
+      temp_array = Array.new
+      @board_size.times { temp_array << :empty }
+      @filled_board_spaces << temp_array
     end
     createLegalChords
     createPile
@@ -29,25 +34,25 @@ class TilesState
   end
 
   def createLegalChords
-    if @rule < 5 # tonal chords
+    if @rule < 5 # only the tonal rules have ic prime forms and incomplete sevenths
       superset_chords = [345, 354, 2334, 2343, 2433, 336, 444, 3333, 1344, 1434, 1443, 246, 2424]
-      # superset_sevenths = [2334, 2343, 2433, 3333, 1344, 1434, 1443, 2424]
       superset_incompletes = [264, 237, 336, 273, 246, 174, 138, 147, 183]
       case @rule
-      when 0
-        @legal_chords = superset_chords[0, 5]
-      when 1, 2
-        @legal_chords = superset_chords[0, 8]
-      when 3, 4
-        @legal_chords = superset_chords[0, 11]
+        when 0; @legal_chords = superset_chords[0, 5]
+        when 1, 2; @legal_chords = superset_chords[0, 8]
+        when 3, 4; @legal_chords = superset_chords[0, 11]
       else
       end
       [11, 12].each { |i| @legal_chords.push(superset_chords[i]) } if [2, 4].include?(@rule)
+      # These are the two augmented sixths legal under classical rules
       if @rule < 3
         @legal_incompletes = superset_incompletes[0, 5]
+        # only the first five incompletes are legal under folk and rock rules;
+        # the rest contain semitones
       else
         @legal_incompletes = superset_incompletes
       end
+    # for DEV: change octatonic and hexatonic rules, these should be PC SETS
     elsif @rule == 5 # octatonic membership
       @legal_chords = [129, 138, 156, 237, 246, 336, 345, 1218, 1236, 1245, 1326, 1335, 1515,
         1272, 1263, 2334, 2424, 1353, 2343, 3333]
@@ -61,8 +66,11 @@ class TilesState
   def createPile # generate a pile of 66 dyadminos
     (0..11).each do |pc1| # first tile, pcs 0 to e
       (0..11).each do |pc2| # second tile, pcs 0 to e
-        unless pc1 == pc2 || @rule == 0 && [1, 2, 6, 10, 11].include?((pc1 - pc2).abs) ||
-          [1, 2].include?(@rule) && [1, 2, 10, 11].include?((pc1 - pc2).abs)
+        temp_ic = [(pc1 - pc2).abs, (pc2 - pc1).abs].min
+        unless pc1 == pc2 || @rule == 0 && [1, 2, 6].include?(temp_ic) ||
+          [1, 2].include?(@rule) && [1, 2].include?(temp_ic)
+          # no semitones, whole-tones, or tritones under folk rules
+          # no semitones or whole-tones under rock rules
           thisDyad = [pc1.to_s(12), pc2.to_s(12)].sort.join.to_sym
           @pile << thisDyad unless @pile.include?(thisDyad)
         end
@@ -94,7 +102,8 @@ class TilesState
     # deletes original dyadmino in rack slot EITHER WAY
     if @pile.count >= 1
       @rack_slots[slot_num] = { pcs: fromPile, orient: rand(2) }
-      # randomize whether lower pc is at top or bottom
+      # randomize whether lower-value pc is at top or bottom of rack
+      # for dev in console, left pc is the top one, right pc is the bottom one
     else
       @rack_slots.delete_at(slot_num) # automatically reordered
     end
@@ -103,35 +112,34 @@ class TilesState
 # Rack state changes
 
   def flipDyadmino(slot_num)
-    @rack_slots[slot_num][:orient] += 1 # toggles between 0 and 2,
-    @rack_slots[slot_num][:orient] %= 2 # will be 0 and 3 for hex tiles
+    @rack_slots[slot_num][:orient] += 1 # value toggles between 0 and 1
+    @rack_slots[slot_num][:orient] %= 2
     showRack
   end
 
   def swapDyadminos(slot_1, slot_2)
-    @rack_slots[slot_1][:pcs], @rack_slots[slot_2][:pcs] =
-      @rack_slots[slot_2][:pcs], @rack_slots[slot_1][:pcs]
-    @rack_slots[slot_1][:orient], @rack_slots[slot_2][:orient] =
-      @rack_slots[slot_2][:orient], @rack_slots[slot_1][:orient]
+    @rack_slots[slot_1], @rack_slots[slot_2] =
+      @rack_slots[slot_2], @rack_slots[slot_1]
     showRack
   end
 
 # Board state changes
 
   def initialBoard # places random dyadmino from pile randomly onto board to start game
-    rack_orient = rand(2)
-    board_orient = rand(4) # random orientation
+    rack_orient = rand(2) # as if it had come from the rack
+    board_orient = rand(6) # random orientation
     top_x = rand(@board_size) # random x, y coordinates
     top_y = rand(@board_size)
+    # in each dyadmino, one pc always has a lower value than the other
     lower_x, lower_y, higher_x, higher_y =
       orientToBoard(top_x, top_y, rack_orient, board_orient)
     ontoBoard(fromPile, lower_x, lower_y, higher_x, higher_y)
   end
 
   def ontoBoard(pcs, lower_x, lower_y, higher_x, higher_y)
-    @filled_board_slots[lower_y][lower_x] = pcs[0]
-    @filled_board_slots[higher_y][higher_x] = pcs[1]
-    @board_slots << { pcs: pcs, lower_x: lower_x, lower_y: lower_y,
+    @filled_board_spaces[lower_y][lower_x] = pcs[0]
+    @filled_board_spaces[higher_y][higher_x] = pcs[1]
+    @board_spaces << { pcs: pcs, lower_x: lower_x, lower_y: lower_y,
       higher_x: higher_x, higher_y: higher_y }
   end
 
@@ -149,8 +157,8 @@ class TilesState
 
   def playDyadmino(slot_num, top_x, top_y, board_orient)
     this_sonority = Array.new
-    # converts rack orient to board coord, checks if board slots are free,
-    # checks if all possible sonorities made are legal, then refills rack if `possible
+    # converts rack orient to board coord, checks if board spaces are free,
+    # checks if all possible sonorities made are legal, then refills rack if possible
     lower_x, lower_y, higher_x, higher_y =
       orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
     unless boardSlotsEmpty?(lower_x, lower_y, higher_x, higher_y)
@@ -194,14 +202,17 @@ class TilesState
 
   def orientToBoard(top_x, top_y, rack_orient, board_orient) # changes rack orient to board coord
     bottom_x, bottom_y = top_x, top_y # temporarily makes bottom pc coords same as top
+    x_deviate = y_deviate = 0 # how bottom coordinates deviate from top
     case board_orient # coords for two pcs will be off by one in one axis
-    # (for hex board, there will be six orients)
-      when 1; bottom_y = (top_y + 1) % @board_size
-      when 2; bottom_x = (top_x - 1) % @board_size
-      when 3; bottom_y = (top_y - 1) % @board_size
-      when 0; bottom_x = (top_x + 1) % @board_size
-    else
+      when 0; x_deviate = 1
+      when 1; x_deviate, y_deviate = 1, -1
+      when 2; y_deviate = - 1
+      when 3; x_deviate = -1
+      when 4; x_deviate, y_deviate = -1, 1
+      when 5; y_deviate = 1
     end
+    bottom_x = (top_x + x_deviate) % @board_size
+    bottom_y = (top_y + y_deviate) % @board_size
     # player's understanding of dyadmino orient is based on placement on rack;
     # this assigns board coord based on lower and higher pcs instead
     if rack_orient == 0
@@ -213,7 +224,7 @@ class TilesState
   end
 
   def boardSlotsEmpty?(lower_x, lower_y, higher_x, higher_y)
-    @filled_board_slots[lower_y][lower_x] == "." && @filled_board_slots[higher_y][higher_x] == "."
+    @filled_board_spaces[lower_y][lower_x] == :empty && @filled_board_spaces[higher_y][higher_x] == :empty
   end
 
   def centerBoard # shows center of smallest rectangle that encloses all played dyadminos
@@ -222,7 +233,7 @@ class TilesState
     max_x = max_y = 0
     @board_size.times do |j|
       @board_size.times do |i|
-        if @filled_board_slots[j][i] != "."
+        if @filled_board_spaces[j][i] != :empty
           min_x, min_y, max_x, max_y = [min_x, i].min, [min_y, j].min, [max_x, i].max, [max_y, j].max
         end
       end
@@ -231,20 +242,6 @@ class TilesState
     print "center of board is at #{center_x}, #{center_y}\n"
   end
 
-
-
-  # def scanSurroundingSlots(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
-  #   # the two pcs share one axis, so there are three sonorities to check
-  #   # hex board will have FIVE sonorities to check, use mod 3
-  #   first_sonority = checkLegalSonority(lower_pc, lower_x, lower_y, 0) # check vertical
-  #   second_sonority = checkLegalSonority(lower_pc, lower_x, lower_y, 1) # check horizontal
-  #   lower_x == higher_x ? axis_to_check = 1 : axis_to_check = 0
-  #   third_sonority = checkLegalSonority(higher_pc, higher_x, higher_y, axis_to_check)
-  #   print first_sonority, second_sonority, third_sonority
-  #   return first_sonority, second_sonority, third_sonority
-  # end
-
-  # code is kept simple so as not to confuse me when I add a third axis for the hex board
   def scanSurroundingSlots(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
     # only checks if dyadmino placement is illegal for physical reasons:
     # repeated pcs, more than the maximum allowed in a row, and semitones under folk or rock rules
@@ -254,46 +251,53 @@ class TilesState
       when 6; max_card = 6
     end
     array_of_sonorities = Array.new
-    # each array is pc, x, y, axis to check
-    directions_to_check = [[lower_pc, lower_x, lower_y, "ver"], [lower_pc, lower_x, lower_y, "hor"],
-                            [higher_pc, higher_x, higher_y, ""]]
-    if lower_x == higher_x # doesn't check parallel axis twice
-      directions_to_check[2][3] = "hor"
+    # this should be refactored
+    directions_to_check = [{ pc: lower_pc, x: lower_x, y: lower_y, dir: :eastwest },
+                            { pc: lower_pc, x: lower_x, y: lower_y, dir: :se_to_nw },
+                            { pc: lower_pc, x: lower_x, y: lower_y, dir: :sw_to_ne },
+                            { pc: higher_pc, x: higher_x, y: higher_y, dir: :eastwest },
+                            { pc: higher_pc, x: higher_x, y: higher_y, dir: :se_to_nw },
+                            { pc: higher_pc, x: higher_x, y: higher_y, dir: :sw_to_ne }]
+    if lower_x == higher_x # so that same direction of dyadmino orientation isn't checked twice
+      directions_to_check.delete_at(5)
     elsif lower_y == higher_y
-      directions_to_check[2][3] = "ver" # on hex board there will be five directions
+      directions_to_check.delete_at(3)
+    else
+      directions_to_check.delete_at(4)
     end
-    # lower_vertical, lower_horizontal, higher_vertical, higher_horizontal
     directions_to_check.each do |origin|
-      temp_sonority = [origin[0]]
+      temp_sonority = [origin[:pc]]
       [-1, 1].each do |vector| # checks in both directions
-        temp_pc, temp_x, temp_y = "", origin[1], origin[2]
-        while temp_pc != "."
+        temp_pc, temp_x, temp_y = String.new, origin[:x], origin[:y]
+        while temp_pc != :empty
           # establishes that the pc in the temporary container is NOT the empty slot
           # where the dyadmino might go
-          if origin[3] == "ver" # checking vertically
+          if origin[:dir] == :sw_to_ne
             temp_y = (temp_y + vector) % @board_size
-          elsif origin[3] == "hor" # checking horizontally; on hex board, there will be a third condition
+          elsif origin[:dir] == :eastwest
             temp_x = (temp_x + vector) % @board_size
+          elsif origin[:dir] == :se_to_nw
+            temp_x, temp_y = (temp_x + vector) % @board_size, (temp_y - vector) % @board_size
           end
           if temp_x == lower_x && temp_y == lower_y
             temp_pc = lower_pc
           elsif temp_x == higher_x && temp_y == higher_y
             temp_pc = higher_pc
           else
-            temp_pc = @filled_board_slots[temp_y][temp_x]
+            temp_pc = @filled_board_spaces[temp_y][temp_x]
           end
           if temp_sonority.count > max_card
             return :illegal_maxed_out_row
-          elsif temp_sonority.include?(temp_pc) && temp_pc != "."
+          elsif temp_pc != :empty && temp_sonority.include?(temp_pc)
             return :illegal_repeated_pcs
           elsif @rule < 3 # ensures there are no semitones when playing by folk and rock rules
             [-1, 1].each do |j|
-              if temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12)) && temp_pc != "."
+              if temp_pc != :empty && temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12))
                 return :illegal_semitones
               end
             end
           end
-          if temp_pc != "."
+          if temp_pc != :empty
             vector == -1 ? temp_sonority.unshift(temp_pc) :
             temp_sonority.push(temp_pc)
           end
@@ -381,9 +385,10 @@ class TilesState
     real_root = String.new
     # refactor? same array as superset of tonal ics in method to create array of all legal chords
     tonal_ics = [345, 354, 2334, 2343, 2433, 336, 444, 3333, 1344, 1434, 1443, 246, 2424]
-    t_names = ["minor triad", "major triad", "half-diminished seventh", "minor seventh", "dominant seventh",
-              "diminished triad", "augmented triad", "fully diminished seventh", "minor-major seventh",
-              "major seventh", "augmented major seventh", "Italian sixth", "French sixth"]
+    t_names = ["minor triad", "major triad", "half-diminished seventh", "minor seventh",
+              "dominant seventh", "diminished triad", "augmented triad", "fully diminished seventh",
+              "minor-major seventh", "major seventh", "augmented major seventh",
+              "Italian sixth", "French sixth"]
     t_adjust_root = [0, 8, 2, 2, 2, 0, 0, 0, 1, 1, 1, 2, 2] # adds to fake root to find correct root
     # for each symmetric chord, first value is ics, second value is mod number
     t_symmetric = [[444, 3333, 2424], [4, 3, 6]]
@@ -431,12 +436,14 @@ class TilesState
   end
 
   def showBoard # hexagonal board is really 2x2 board with extra diagonal
+    # board size > 36 will create double-digit coordinates in console;
+    # this is fine since this method is only for dev purposes
     centerBoard
     (@board_size - 1).step(0, -1) do |j|
       print "#{" " * j}#{j.to_s(36)}|"
-      temp_array = @filled_board_slots[j].split("")
+      temp_array = @filled_board_spaces[j]
       @board_size.times do |i|
-        print "#{temp_array[i]} "
+        print "#{temp_array[i] == :empty ? "." : temp_array[i]} "
       end
       case j
         when 2; print "  |  4 5  | how hexagonal orientation works:"

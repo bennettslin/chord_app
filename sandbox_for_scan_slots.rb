@@ -1,4 +1,3 @@
-  # code is kept simple so as not to confuse me when I add a third axis for the hex board
   def scanSurroundingSlots(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
     # only checks if dyadmino placement is illegal for physical reasons:
     # repeated pcs, more than the maximum allowed in a row, and semitones under folk or rock rules
@@ -8,26 +7,37 @@
       when 6; max_card = 6
     end
     array_of_sonorities = Array.new
-    # each array is pc, x, y, axis to check
-    directions_to_check = [[lower_pc, lower_x, lower_y, "ver"], [lower_pc, lower_x, lower_y, "hor"],
-                            [higher_pc, higher_x, higher_y, ""]]
-    if lower_x == higher_x # doesn't check parallel axis twice
-      directions_to_check[2][3] = "hor"
+    # this should be refactored
+    directions_to_check = [{ pc: lower_pc, x: lower_x, y: lower_y, dir: :eastwest },
+                            { pc: lower_pc, x: lower_x, y: lower_y, dir: :se_to_nw },
+                            { pc: lower_pc, x: lower_x, y: lower_y, dir: :sw_to_ne },
+                            { pc: higher_pc, x: higher_x, y: higher_y, dir: :eastwest },
+                            { pc: higher_pc, x: higher_x, y: higher_y, dir: :se_to_nw },
+                            { pc: higher_pc, x: higher_x, y: higher_y, dir: :sw_to_ne }]
+    if lower_x == higher_x # so that same direction of dyadmino orientation isn't checked twice
+      directions_to_check.delete_at(5)
     elsif lower_y == higher_y
-      directions_to_check[2][3] = "ver" # on hex board there will be five directions
+      directions_to_check.delete_at(3)
+    else
+      directions_to_check.delete_at(4)
     end
-    # lower_vertical, lower_horizontal, higher_vertical, higher_horizontal
+                        print "The directions to check are: "
+                        directions_to_check.each { |d| print "#{d[:dir]}, "}
+                        print ".\n"
+
     directions_to_check.each do |origin|
-      temp_sonority = [origin[0]]
+      temp_sonority = [origin[:pc]]
       [-1, 1].each do |vector| # checks in both directions
-        temp_pc, temp_x, temp_y = "", origin[1], origin[2]
-        while temp_pc != "."
+        temp_pc, temp_x, temp_y = String.new, origin[:x], origin[:y]
+        while temp_pc != :empty
           # establishes that the pc in the temporary container is NOT the empty slot
           # where the dyadmino might go
-          if origin[3] == "ver" # checking vertically
+          if origin[:dir] == :sw_to_ne
             temp_y = (temp_y + vector) % @board_size
-          elsif origin[3] == "hor" # checking horizontally; on hex board, there will be a third condition
+          elsif origin[:dir] == :eastwest
             temp_x = (temp_x + vector) % @board_size
+          elsif origin[:dir] == :se_to_nw
+            temp_x, temp_y = (temp_x + vector) % @board_size, (temp_y - vector) % @board_size
           end
           if temp_x == lower_x && temp_y == lower_y
             temp_pc = lower_pc
@@ -37,17 +47,20 @@
             temp_pc = @filled_board_slots[temp_y][temp_x]
           end
           if temp_sonority.count > max_card
+
+                             print "Temp_sonority count is: #{temp_sonority.count}.\n"
+
             return :illegal_maxed_out_row
-          elsif temp_sonority.include?(temp_pc) && temp_pc != "."
+          elsif temp_pc != :empty && temp_sonority.include?(temp_pc)
             return :illegal_repeated_pcs
           elsif @rule < 3 # ensures there are no semitones when playing by folk and rock rules
             [-1, 1].each do |j|
-              if temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12)) && temp_pc != "."
+              if temp_pc != :empty && temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12))
                 return :illegal_semitones
               end
             end
           end
-          if temp_pc != "."
+          if temp_pc != :empty
             vector == -1 ? temp_sonority.unshift(temp_pc) :
             temp_sonority.push(temp_pc)
           end
@@ -59,12 +72,15 @@
   end
 
 
+
 @rule = 1
 @board_size = 5
-@filled_board_slots =  ["..b..",
-                        ".a.71",
-                        "...2.",
-                        "..1..",
-                        "....."]
+@filled_board_slots =  [%w(. . b . .),
+                         %w(. a 3 7 1),
+                          %w(. 0 . 2 .),
+                           %w(. . 1 . .),
+                            %w(. . . . .)]
 
-print "The method returns #{scanSurroundingSlots("3", 2, 1, "5", 2, 2)}."
+print "The method returns #{scanSurroundingSlots("3", 1, 3, "5", 2, 2)}\n."
+
+# don't forget to re replace :empty with :empty um, the opposite of that
