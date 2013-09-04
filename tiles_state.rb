@@ -61,13 +61,14 @@ class TilesState
   def createPile # generate a pile of 66 dyadminos
     (0..11).each do |pc1| # first tile, pcs 0 to e
       (0..11).each do |pc2| # second tile, pcs 0 to e
-        unless pc1 == pc2 || @rule == 0 && [1, 2, 6].include?((pc1 - pc2).abs) ||
-          [1, 2].include?(@rule) && (pc1 - pc2).abs == 1
+        unless pc1 == pc2 || @rule == 0 && [1, 2, 6, 10, 11].include?((pc1 - pc2).abs) ||
+          [1, 2].include?(@rule) && [1, 2, 10, 11].include?((pc1 - pc2).abs)
           thisDyad = [pc1.to_s(12), pc2.to_s(12)].sort.join.to_sym
           @pile << thisDyad unless @pile.include?(thisDyad)
         end
       end
     end
+    print "Pile count is #{@pile.count}.\n"
   end
 
   def fromPile # draws random dyadmino from pile
@@ -149,16 +150,14 @@ class TilesState
   def playDyadmino(slot_num, top_x, top_y, board_orient)
     this_sonority = Array.new
     # converts rack orient to board coord, checks if board slots are free,
-    # then refills rack if possible
+    # checks if all possible sonorities made are legal, then refills rack if `possible
     lower_x, lower_y, higher_x, higher_y =
       orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
     unless boardSlotsEmpty?(lower_x, lower_y, higher_x, higher_y)
-      print "You can't put one dyadmino over another.\n"
+      print "You can't put one dyadmino on top of another.\n"
         return false
     else
-      # this isn't great code; refactor it
-      lower_pc = @rack_slots[slot_num][:pcs][0]
-      higher_pc = @rack_slots[slot_num][:pcs][1]
+      lower_pc, higher_pc = @rack_slots[slot_num][:pcs][0], @rack_slots[slot_num][:pcs][1]
       this_sonority =
         scanSurroundingSlots(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
       if this_sonority == :illegal_maxed_out_row
@@ -431,14 +430,24 @@ class TilesState
     print "\n"
   end
 
-  def showBoard
+  def showBoard # hexagonal board is really 2x2 board with extra diagonal
     centerBoard
     (@board_size - 1).step(0, -1) do |j|
-      print "#{j.to_s(36)}|#{@filled_board_slots[j]}\n"
+      print "#{" " * j}#{j.to_s(36)}|"
+      temp_array = @filled_board_slots[j].split("")
+      @board_size.times do |i|
+        print "#{temp_array[i]} "
+      end
+      case j
+        when 2; print "  |  4 5  | how hexagonal orientation works:"
+        when 1; print "   | 3 x 0 | top pc is located at x"
+        when 0; print "    |  2 1  | bottom pc is located at number"
+      end
+      print "\n"
     end
-    print "  #{"-" * @board_size}\n  "
+    print " #{"-" * 2 * @board_size}\n"
     @board_size.times do |i|
-      print "#{i.to_s(36)}"
+      print "#{i.to_s(36)} "
     end
     print "\n"
   end

@@ -1,43 +1,34 @@
-Quick and easy Ruby apps
-=======================
+Dyadminos! A Musical Tile Game
+==============================
 
-*Require Highline gem.*
-
-These short apps will provide the game logic for a musical tile game that I'm working on just for fun.
+This is a musical tile game that I'm working on just for fun. Basically, it's like Scrabble except with musical chords instead of words, and the playing pieces will resemble dominos with a different musical note on each face.
 
 Is this a chord?
 ----------------
 
-This is a short and simple program that prints out the interval-class prime form and type of chord, if any, of a given set of pitch-classes inputted by the user in duodecimal form.
+*Require Highline gem.*
+
+This is a quick and easy app that just prints out the interval-class prime form and type of chord, if any, of a given set of pitch-classes based on user input.
+
+The game logic
+--------------
+
+*Requires Highline gem. Run begin.rb in console.*
+
+This app will provide the game logic. Each dyadmino is like a domino with a different musical note on each face. This app generates the pile, then keeps track of which dyadminos are on the player's rack, on the gameboard, or still in the pile. The player may flip or swap the dyadminos on her rack, replace one for another in the pile, or else place one on the gameboard. The app will determine whether her move is legal. She is free to form complete chords which score points, or incomplete chords which score no points. She cannot place one dyadmino over one already on the board or repeat a note in the same row.
 
 Further coding to do:
-* check that pitches aren't repeated
-* check that only three or four pitches are given
-* return an error for non-duodecimal input
+* calculate score of chords played
+* allow legal movement of any dyadmino already on board
+* turn into hexagonal board
+* allow for two players
 
-Placement of tiles
-------------------
-
-There are 66 dyadminos total. These methods use arrays of hashes to keep track of which dyadminos are on the player's rack, on the gameboard, or still in the pile. They also allow the player to flip and swap the dyadminos on her rack, replace them for others in the pile, or place them on the gameboard.
-
-Further coding to do:
-* combine dyadmino-placement methods with chord-identifying methods so that only legal chords are allowed to be played on the board.
-* calculate score of chords played.
-* turn into hex board
-
-Dyadminos!
-==========
-
-A musical tile game
--------------------
-
-*Note:* After tinkering around with the Gosu gem, I've decided it would be more productive to dive straight into the RubyMotion toolkit instead. Since it will take me a while to get up to speed with RubyMotion, I'm just going to get all the game logic done first, then come back to programming the interface.
+The interface
+-------------
 
 *Requires Gosu gem. Run main.rb in console.*
 
-Basically, it's like Scrabble except with musical chords instead of words, and the playing pieces will resemble dominos with a different musical note on each face.
-
-I'm still figuring out how best to organise my classes and methods in separate files, so sorry if everything's a little scattered right now. Here is my personal schedule for what I need to get done.
+*Note:* After tinkering around with the Gosu gem, I've decided it would be more productive to dive straight into the RubyMotion toolkit instead. So I'm going to work on finishing the game logic and hold off on programming the interface for now. I'm leaving this here for anyone who's interested.
 
 Nomenclature
 ------------
