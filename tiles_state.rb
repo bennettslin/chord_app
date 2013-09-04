@@ -156,37 +156,32 @@ class TilesState
   end
 
   def playDyadmino(slot_num, top_x, top_y, board_orient)
-    this_sonority = Array.new
-    # converts rack orient to board coord, checks if board spaces are free,
-    # checks if all possible sonorities made are legal, then refills rack if possible
+    # checks if board spaces are free and all possible sonorities made are legal;
+    # if so, places dyadmino on board and refills rack from pile if possible;
+    # otherwise, prints error message to user
     lower_x, lower_y, higher_x, higher_y =
       orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
     unless boardSlotsEmpty?(lower_x, lower_y, higher_x, higher_y)
-      print "You can't put one dyadmino on top of another.\n"
-        return false
+      printMessage(:illegal_occupied_space, nil)
+      return false
     else
+      this_sonority = Array.new
       lower_pc, higher_pc = @rack_slots[slot_num][:pcs][0], @rack_slots[slot_num][:pcs][1]
       this_sonority =
         scanSurroundingSlots(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
-      if this_sonority == :illegal_maxed_out_row
-        print "You can't have more than the max number in a row.\n"
-        return false
-      elsif this_sonority == :illegal_semitones
-        print "You can't have semitones under folk or rock rules.\n"
-        return false
-      elsif this_sonority == :illegal_repeated_pcs
-        print "You can't have more than one of the same pc in any given row.\n"
+      if this_sonority.class == Symbol
+        printMessage(this_sonority, nil)
         return false
       else
         this_sonority.each do |son|
           if son.length >= 3 && checkLegalChord(son)
-            print "[#{son}] is legal and yields points.\n"
+            printMessage(:legal_chord, son)
           elsif son.length < 3
-            # do nothing
+            # monad or dyad, no message is needed
           elsif son.length == 3 && checkLegalIncomplete(son)
-            print "[#{son}] is legal but yields no points.\n"
+            printMessage(:legal_incomplete, son)
           else
-            print "[#{son}] isn't a legal sonority.\n"
+            printMessage(:illegal_sonority, son)
             return false
           end
         end
@@ -242,9 +237,29 @@ class TilesState
     print "center of board is at #{center_x}, #{center_y}\n"
   end
 
+  def printMessage(message, extra_arg)
+    case message
+      when :illegal_occupied_space
+        print "You can't put one dyadmino on top of another.\n"
+      when :illegal_maxed_out_row
+        print "You can't have more than the max number in a row.\n"
+      when :illegal_semitones
+        print "You can't have semitones under folk or rock rules.\n"
+      when :illegal_repeated_pcs
+        print "You can't repeat the same pc in any given row.\n"
+      when :legal_chord
+            print "[#{extra_arg}] is a legal chord.\n"
+      when :legal_incomplete
+            print "[#{extra_arg}] is a legal incomplete seventh.\n"
+      when :illegal_sonority
+            print "[#{extra_arg}] isn't a legal sonority.\n"
+    else
+    end
+  end
+
   def scanSurroundingSlots(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
-    # only checks if dyadmino placement is illegal for physical reasons:
-    # repeated pcs, more than the maximum allowed in a row, and semitones under folk or rock rules
+    # ONLY checks if move is illegal for easy to detect physical reasons:
+    # repeated pcs, maxed out rows, or semitones under folk or rock rules
     case @rule
       when (0..4) ; max_card = 4
       when 5; max_card = 8
