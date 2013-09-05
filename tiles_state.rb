@@ -155,6 +155,37 @@ class TilesState
     showRack
   end
 
+  def randomEmptyNeighborSpace
+    array_of_empty_neighbor_spaces = Array.new
+    @filled_board_spaces.each_index do |y|
+      @filled_board_spaces[y].each_index do |x|
+        if @filled_board_spaces[y][x] != :empty # this is the filled space
+          [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
+            temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
+            if @filled_board_spaces[temp_y][temp_x] == :empty
+              array_of_empty_neighbor_spaces << [temp_x, temp_y]
+            end
+          end
+        end
+      end
+    end
+    random_coord = array_of_empty_neighbor_spaces.uniq.sample
+    return random_coord[0], random_coord[1]
+  end
+
+  def hasFilledNeighborSpace?(x, y)
+    # determines that a given empty space is next to a filled one on the board
+    # DEV: refactor? similar to code in randomEmptyNeighborSpace
+    [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
+      temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
+      if @filled_board_spaces[temp_y][temp_x] != :empty
+        return true
+      else
+      end
+    end
+    return false
+  end
+
   def playDyadmino(slot_num, top_x, top_y, board_orient)
     # checks if board spaces are free and all possible sonorities made are legal;
     # if so, places dyadmino on board and refills rack from pile if possible;
