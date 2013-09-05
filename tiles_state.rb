@@ -145,6 +145,7 @@ class TilesState
 
 # Controller actions
 
+  # DEV: some of this code is the same as intoRack method
   def replaceDyadmino(slot_num) # swaps single dyadmino back into pile
     if @pile.count >= 1 # does nothing if pile is empty
       held_pc = @rack_slots[slot_num][:pcs] # ensures different dyadmino from pile
@@ -153,37 +154,6 @@ class TilesState
     end
     showPile
     showRack
-  end
-
-  def randomEmptyNeighborSpace
-    array_of_empty_neighbor_spaces = Array.new
-    @filled_board_spaces.each_index do |y|
-      @filled_board_spaces[y].each_index do |x|
-        if @filled_board_spaces[y][x] != :empty # this is the filled space
-          [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
-            temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
-            if @filled_board_spaces[temp_y][temp_x] == :empty
-              array_of_empty_neighbor_spaces << [temp_x, temp_y]
-            end
-          end
-        end
-      end
-    end
-    random_coord = array_of_empty_neighbor_spaces.uniq.sample
-    return random_coord[0], random_coord[1]
-  end
-
-  def hasFilledNeighborSpace?(x, y)
-    # determines that a given empty space is next to a filled one on the board
-    # DEV: refactor? similar to code in randomEmptyNeighborSpace
-    [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
-      temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
-      if @filled_board_spaces[temp_y][temp_x] != :empty
-        return true
-      else
-      end
-    end
-    return false
   end
 
   def playDyadmino(slot_num, top_x, top_y, board_orient)
@@ -205,10 +175,12 @@ class TilesState
         return false
       else
         this_sonority.each do |son|
-          if son.length >= 3 && checkLegalChord(son)
-            printMessage(:legal_chord, son)
-          elsif son.length < 3
-            # monad or dyad, no message is needed
+          if son.length >= 3
+            whether_legal_chord, chord_root_and_type = checkLegalChord(son)
+            if whether_legal_chord
+              printMessage(:legal_chord, chord_root_and_type)
+            end
+          elsif son.length < 3 # monad or dyad, no action or message
           elsif son.length == 3 && checkLegalIncomplete(son)
             printMessage(:legal_incomplete, son)
           else
@@ -268,7 +240,7 @@ class TilesState
     print "center of board is at #{center_x}, #{center_y}\n"
   end
 
-  def printMessage(message, extra_arg)
+  def printMessage(message, sonority_string)
     case message
       when :illegal_occupied_space
         print "You can't put one dyadmino on top of another.\n"
@@ -279,11 +251,11 @@ class TilesState
       when :illegal_repeated_pcs
         print "You can't repeat the same pc in any given row.\n"
       when :legal_chord
-            print "[#{extra_arg}] is a legal chord.\n"
+            print "#{sonority_string} is a legal chord.\n"
       when :legal_incomplete
-            print "[#{extra_arg}] is a legal incomplete seventh.\n"
+            print "[#{sonority_string}] is a legal incomplete seventh.\n"
       when :illegal_sonority
-            print "[#{extra_arg}] isn't a legal sonority.\n"
+            print "[#{sonority_string}] isn't a legal sonority.\n"
     else
     end
   end
@@ -297,7 +269,7 @@ class TilesState
       when 6; max_card = 6
     end
     array_of_sonorities = Array.new
-    # this should be refactored
+    # DEV: this should be refactored
     directions_to_check = [{ pc: lower_pc, x: lower_x, y: lower_y, dir: :eastwest },
                             { pc: lower_pc, x: lower_x, y: lower_y, dir: :se_to_nw },
                             { pc: lower_pc, x: lower_x, y: lower_y, dir: :sw_to_ne },
@@ -315,7 +287,7 @@ class TilesState
       temp_sonority = [origin[:pc]]
       [-1, 1].each do |vector| # checks in both directions
         temp_pc, temp_x, temp_y = String.new, origin[:x], origin[:y]
-        while temp_pc != :empty
+        while temp_pc != :empty # until temp_pc == :empty
           # establishes that the pc in the temporary container is NOT the empty slot
           # where the dyadmino might go
           if origin[:dir] == :sw_to_ne
@@ -364,15 +336,71 @@ class TilesState
     icp_form, fake_root = getICPrimeForm(sonority)
     whether_legal_chord = isThisSonorityLegal?(icp_form, @legal_chords)
     if whether_legal_chord
-      # print "This is #{whether_legal_chord ? "legal" : "illegal"} under rule #{@rule}.\n"
       real_root, chord_type = getRootAndType(icp_form, fake_root)
-      print "This is a #{real_root} #{chord_type}.\n"
     end
-    return whether_legal_chord
+    return whether_legal_chord, [real_root, chord_type].join("-")
   end
 
   def isThisSonorityLegal?(icp_form, array_of_sonorities)
     array_of_sonorities.include?(icp_form.to_i)
+  end
+
+  def returnRandomEmptyNeighborSpace
+    # only for dev purposes, probably;
+    # scans board and returns a random empty space that has a filled neighbor
+    array_of_empty_neighbor_spaces = Array.new
+    @filled_board_spaces.each_index do |y|
+      @filled_board_spaces[y].each_index do |x|
+        if @filled_board_spaces[y][x] != :empty # this is the filled space
+          [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
+            temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
+            if @filled_board_spaces[temp_y][temp_x] == :empty
+              array_of_empty_neighbor_spaces << [temp_x, temp_y]
+            end
+          end
+        end
+      end
+    end
+    random_coord = array_of_empty_neighbor_spaces.uniq.sample
+    return random_coord[0], random_coord[1]
+  end
+
+  def hasFilledNeighborSpace?(x, y)
+    # determines that a given empty space is next to a filled one on the board
+    # DEV: refactor? similar to code in returnRandomEmptyNeighborSpace
+    [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
+      temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
+      if @filled_board_spaces[temp_y][temp_x] != :empty
+        return true
+      else
+      end
+    end
+    return false
+  end
+
+  def convertPCIntegerToLetter(pc_integer)
+    pc_letter = Array.new
+    sharp = "\u266f" # Unicode symbols for sharp and flat signs
+    flat = "\u266d" # Sublime Text 2 console doesn't recognize them
+    scale = ["C", "D", "E", "F", "G", "A", "B"]
+    pc_integer.each_char do |pc|
+      case pc.to_i(12)
+        when 0; temp_pc_letter = "C"
+        when 1; temp_pc_letter = "C#{sharp} /D#{flat} "
+        when 2; temp_pc_letter = "D"
+        when 3; temp_pc_letter = "D#{sharp} /E#{flat} "
+        when 4; temp_pc_letter = "E"
+        when 5; temp_pc_letter = "F"
+        when 6; temp_pc_letter = "F#{sharp} /G#{flat} "
+        when 7; temp_pc_letter = "G"
+        when 8; temp_pc_letter = "G#{sharp} /A#{flat} "
+        when 9; temp_pc_letter = "A"
+        when 10; temp_pc_letter = "A#{sharp} /B#{flat} "
+        when 11; temp_pc_letter = "B"
+      end
+      pc_letter << temp_pc_letter
+    end
+    return pc_letter.join("-")
   end
 
 # game logic
@@ -423,7 +451,7 @@ class TilesState
 
     @rule.between?(5, 6) ? icp_form =
       [icp_sonorities[0], icp_sonorities[1]].min : icp_form = icp_sonorities[0]
-    print "The interval-class prime form of [#{sonority}] is (#{icp_form}).\n"
+    # print "The interval-class prime form of [#{sonority}] is (#{icp_form}).\n"
     return icp_form, fake_root
   end
 
@@ -448,7 +476,7 @@ class TilesState
     else
       real_root = ((t_adjust_root[t_index] + fake_root) % 12).to_s(12)
     end
-    return real_root, t_names[t_index]
+    return convertPCIntegerToLetter(real_root), t_names[t_index]
   end
 
 # Views
