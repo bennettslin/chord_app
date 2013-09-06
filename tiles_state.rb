@@ -61,7 +61,7 @@ class TilesState
     end
   end
 
-# Pile state changes
+# PILE STATE CHANGES
 
   def createPile # generate a pile of 66 dyadminos
     (0..11).each do |pc1| # first tile, pcs 0 to e
@@ -88,7 +88,7 @@ class TilesState
     @pile.push(pcs)
   end
 
-# Pile into rack state changes
+# PILE-RACK STATE CHANGES
 
   def initialRack # puts starting dyadminos in rack
     @rack_num.times do |slot_num| # number of dyadminos in player's rack, may change
@@ -109,7 +109,17 @@ class TilesState
     end
   end
 
-# Rack state changes
+  def replaceDyadmino(slot_num) # swaps single dyadmino back into pile
+    if @pile.count >= 1 # does nothing if pile is empty
+      held_pc = @rack_slots[slot_num][:pcs] # ensures different dyadmino from pile
+      intoRack(slot_num)
+      intoPile(held_pc)
+    end
+    showPile
+    showRack
+  end
+
+# RACK STATE CHANGES
 
   def flipDyadmino(slot_num)
     @rack_slots[slot_num][:orient] += 1 # value toggles between 0 and 1
@@ -123,7 +133,7 @@ class TilesState
     showRack
   end
 
-# Board state changes
+# BOARD STATE CHANGES
 
   def initialBoard # places random dyadmino from pile randomly onto board to start game
     rack_orient = rand(2) # as if it had come from the rack
@@ -143,33 +153,26 @@ class TilesState
       higher_x: higher_x, higher_y: higher_y }
   end
 
-# Controller actions
-
-  # DEV: some of this code is the same as intoRack method
-  def replaceDyadmino(slot_num) # swaps single dyadmino back into pile
-    if @pile.count >= 1 # does nothing if pile is empty
-      held_pc = @rack_slots[slot_num][:pcs] # ensures different dyadmino from pile
-      @rack_slots[slot_num][:pcs] = fromPile
-      intoPile(held_pc)
-    end
-    showPile
-    showRack
-  end
+# CONTROLLERS
 
   def playDyadmino(slot_num, top_x, top_y, board_orient)
-    # checks if board spaces are free and all possible sonorities made are legal;
+    # first checks if physical placement of dyadmino is legal;
+    # then checks whether all possible sonorities made are legal;
     # if so, places dyadmino on board and refills rack from pile if possible;
     # otherwise, prints error message to user
     lower_x, lower_y, higher_x, higher_y =
       orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
-    unless boardSlotsEmpty?(lower_x, lower_y, higher_x, higher_y)
+    if isOccupiedSpace?(lower_x, lower_y) || isOccupiedSpace?(higher_x, higher_y)
       printMessage(:illegal_occupied_space, nil)
+      return false
+    elsif isIslandSpace?(lower_x, lower_y) && isIslandSpace?(higher_x, higher_y)
+      printMessage(:illegal_island, nil)
       return false
     else
       this_sonority = Array.new
       lower_pc, higher_pc = @rack_slots[slot_num][:pcs][0], @rack_slots[slot_num][:pcs][1]
       this_sonority =
-        scanSurroundingSlots(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
+        scanNeighboringSpaces(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
       if this_sonority.class == Symbol
         printMessage(this_sonority, nil)
         return false
@@ -196,7 +199,7 @@ class TilesState
     showRack
   end
 
-# Helper methods
+# PHYSICAL LOGIC
 
   def orientToBoard(top_x, top_y, rack_orient, board_orient) # changes rack orient to board coord
     bottom_x, bottom_y = top_x, top_y # temporarily makes bottom pc coords same as top
@@ -221,110 +224,107 @@ class TilesState
     return lower_x, lower_y, higher_x, higher_y
   end
 
-  def boardSlotsEmpty?(lower_x, lower_y, higher_x, higher_y)
-    @filled_board_spaces[lower_y][lower_x] == :empty && @filled_board_spaces[higher_y][higher_x] == :empty
-  end
-
-  def centerBoard # shows center of smallest rectangle that encloses all played dyadminos
-    # only for view purposes, data is unaffected
-    min_x = min_y = @board_size - 1
-    max_x = max_y = 0
-    @board_size.times do |j|
-      @board_size.times do |i|
-        if @filled_board_spaces[j][i] != :empty
-          min_x, min_y, max_x, max_y = [min_x, i].min, [min_y, j].min, [max_x, i].max, [max_y, j].max
-        end
-      end
-    end
-    center_x, center_y = (max_x + min_x) / 2, (max_y + min_y) / 2
-    print "center of board is at #{center_x}, #{center_y}\n"
-  end
-
-  def printMessage(message, sonority_string)
-    case message
-      when :illegal_occupied_space
-        print "You can't put one dyadmino on top of another.\n"
-      when :illegal_maxed_out_row
-        print "You can't have more than the max number in a row.\n"
-      when :illegal_semitones
-        print "You can't have semitones under folk or rock rules.\n"
-      when :illegal_repeated_pcs
-        print "You can't repeat the same pc in any given row.\n"
-      when :legal_chord
-            print "#{sonority_string} is a legal chord.\n"
-      when :legal_incomplete
-            print "[#{sonority_string}] is a legal incomplete seventh.\n"
-      when :illegal_sonority
-            print "[#{sonority_string}] isn't a legal sonority.\n"
-    else
-    end
-  end
-
-  def scanSurroundingSlots(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
-    # ONLY checks if move is illegal for easy to detect physical reasons:
-    # repeated pcs, maxed out rows, or semitones under folk or rock rules
+  def scanNeighboringSpaces(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
+    # only checks if dyadmino placement is illegal for physical reasons:
+    # repeated pcs, more than the maximum allowed in a row, and semitones under folk or rock rules
+    # if legal, returns all sonorities larger than monads
     case @rule
       when (0..4) ; max_card = 4
       when 5; max_card = 8
       when 6; max_card = 6
     end
     array_of_sonorities = Array.new
-    # DEV: this should be refactored
-    directions_to_check = [{ pc: lower_pc, x: lower_x, y: lower_y, dir: :eastwest },
-                            { pc: lower_pc, x: lower_x, y: lower_y, dir: :se_to_nw },
-                            { pc: lower_pc, x: lower_x, y: lower_y, dir: :sw_to_ne },
-                            { pc: higher_pc, x: higher_x, y: higher_y, dir: :eastwest },
-                            { pc: higher_pc, x: higher_x, y: higher_y, dir: :se_to_nw },
-                            { pc: higher_pc, x: higher_x, y: higher_y, dir: :sw_to_ne }]
-    if lower_x == higher_x # so that same direction of dyadmino orientation isn't checked twice
-      directions_to_check.delete_at(5)
-    elsif lower_y == higher_y
-      directions_to_check.delete_at(3)
+    pcs_to_check = [{ pc: lower_pc, x: lower_x, y: lower_y },
+      { pc: higher_pc, x: higher_x, y: higher_y }]
+    directions_to_check = [:eastwest, :se_to_nw, :sw_to_ne]
+    if lower_y == higher_y # ensures that same direction of dyadmino orientation isn't checked twice
+      parallel_axis = directions_to_check[0]
+    elsif lower_x == higher_x
+      parallel_axis = directions_to_check[1]
     else
-      directions_to_check.delete_at(4)
+      parallel_axis = directions_to_check[2]
     end
-    directions_to_check.each do |origin|
-      temp_sonority = [origin[:pc]]
-      [-1, 1].each do |vector| # checks in both directions
-        temp_pc, temp_x, temp_y = String.new, origin[:x], origin[:y]
-        while temp_pc != :empty # until temp_pc == :empty
-          # establishes that the pc in the temporary container is NOT the empty slot
-          # where the dyadmino might go
-          if origin[:dir] == :sw_to_ne
-            temp_y = (temp_y + vector) % @board_size
-          elsif origin[:dir] == :eastwest
-            temp_x = (temp_x + vector) % @board_size
-          elsif origin[:dir] == :se_to_nw
-            temp_x, temp_y = (temp_x + vector) % @board_size, (temp_y - vector) % @board_size
-          end
-          if temp_x == lower_x && temp_y == lower_y
-            temp_pc = lower_pc
-          elsif temp_x == higher_x && temp_y == higher_y
-            temp_pc = higher_pc
-          else
-            temp_pc = @filled_board_spaces[temp_y][temp_x]
-          end
-          if temp_sonority.count > max_card
-            return :illegal_maxed_out_row
-          elsif temp_pc != :empty && temp_sonority.include?(temp_pc)
-            return :illegal_repeated_pcs
-          elsif @rule < 3 # ensures there are no semitones when playing by folk and rock rules
-            [-1, 1].each do |j|
-              if temp_pc != :empty && temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12))
-                return :illegal_semitones
+    pcs_to_check.each do |origin|
+      directions_to_check.each do |dir|
+        temp_sonority = [origin[:pc]]
+        unless origin[:pc] == higher_pc && parallel_axis == dir
+          [-1, 1].each do |vector| # checks in both directions
+            temp_pc, temp_x, temp_y = String.new, origin[:x], origin[:y]
+            while temp_pc != :empty
+              # establishes that the pc in the temporary container is NOT the empty slot
+              # where the dyadmino might go
+              case dir
+              when :se_to_nw; temp_y = (temp_y + vector) % @board_size
+              when :eastwest; temp_x = (temp_x + vector) % @board_size
+              when :sw_to_ne; temp_x, temp_y = (temp_x + vector) % @board_size, (temp_y - vector) % @board_size
+              end
+              if temp_x == lower_x && temp_y == lower_y
+                temp_pc = lower_pc
+              elsif temp_x == higher_x && temp_y == higher_y
+                temp_pc = higher_pc
+              else
+                temp_pc = @filled_board_spaces[temp_y][temp_x]
+              end
+              if temp_sonority.count > max_card
+                return :illegal_maxed_out_row
+              elsif temp_pc != :empty && temp_sonority.include?(temp_pc)
+                print temp_pc
+                return :illegal_repeated_pcs
+              elsif @rule < 3 # ensures there are no semitones when playing by folk and rock rules
+                [-1, 1].each do |j|
+                  if temp_pc != :empty && temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12))
+                    return :illegal_semitones
+                  end
+                end
+              end
+              if temp_pc != :empty
+                vector == -1 ? temp_sonority.unshift(temp_pc) : temp_sonority.push(temp_pc)
               end
             end
           end
-          if temp_pc != :empty
-            vector == -1 ? temp_sonority.unshift(temp_pc) :
-            temp_sonority.push(temp_pc)
-          end
         end
+        array_of_sonorities << temp_sonority.sort!.join if temp_sonority.count > 1
       end
-      array_of_sonorities << temp_sonority.sort!.join
     end
     return array_of_sonorities
   end
+
+  def isOccupiedSpace?(x, y)
+    @filled_board_spaces[y][x] != :empty
+  end
+
+  def isIslandSpace?(x, y)
+    # determines that a given empty space is not next to a filled one on the board
+    [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
+      temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
+      if @filled_board_spaces[temp_y][temp_x] != :empty
+        return false
+      else
+      end
+    end
+    return true
+  end
+
+  def returnRandomEmptyNeighborSpace
+    # scans board and returns a random empty space that has a filled neighbor
+    array_of_empty_neighbor_spaces = Array.new
+    @filled_board_spaces.each_index do |y|
+      @filled_board_spaces[y].each_index do |x|
+        if @filled_board_spaces[y][x] != :empty # this is the filled space
+          [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
+            temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
+            if @filled_board_spaces[temp_y][temp_x] == :empty
+              array_of_empty_neighbor_spaces << [temp_x, temp_y]
+            end
+          end
+        end
+      end
+    end
+    random_coord = array_of_empty_neighbor_spaces.uniq.sample
+    return random_coord[0], random_coord[1]
+  end
+
+# MUSICAL LOGIC
 
   def checkLegalIncomplete(sonority)
     icp_form, fake_root = getICPrimeForm(sonority)
@@ -344,66 +344,6 @@ class TilesState
   def isThisSonorityLegal?(icp_form, array_of_sonorities)
     array_of_sonorities.include?(icp_form.to_i)
   end
-
-  def returnRandomEmptyNeighborSpace
-    # only for dev purposes, probably;
-    # scans board and returns a random empty space that has a filled neighbor
-    array_of_empty_neighbor_spaces = Array.new
-    @filled_board_spaces.each_index do |y|
-      @filled_board_spaces[y].each_index do |x|
-        if @filled_board_spaces[y][x] != :empty # this is the filled space
-          [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
-            temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
-            if @filled_board_spaces[temp_y][temp_x] == :empty
-              array_of_empty_neighbor_spaces << [temp_x, temp_y]
-            end
-          end
-        end
-      end
-    end
-    random_coord = array_of_empty_neighbor_spaces.uniq.sample
-    return random_coord[0], random_coord[1]
-  end
-
-  def hasFilledNeighborSpace?(x, y)
-    # determines that a given empty space is next to a filled one on the board
-    # DEV: refactor? similar to code in returnRandomEmptyNeighborSpace
-    [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
-      temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
-      if @filled_board_spaces[temp_y][temp_x] != :empty
-        return true
-      else
-      end
-    end
-    return false
-  end
-
-  def convertPCIntegerToLetter(pc_integer)
-    pc_letter = Array.new
-    sharp = "\u266f" # Unicode symbols for sharp and flat signs
-    flat = "\u266d" # Sublime Text 2 console doesn't recognize them
-    scale = ["C", "D", "E", "F", "G", "A", "B"]
-    pc_integer.each_char do |pc|
-      case pc.to_i(12)
-        when 0; temp_pc_letter = "C"
-        when 1; temp_pc_letter = "C#{sharp} /D#{flat} "
-        when 2; temp_pc_letter = "D"
-        when 3; temp_pc_letter = "D#{sharp} /E#{flat} "
-        when 4; temp_pc_letter = "E"
-        when 5; temp_pc_letter = "F"
-        when 6; temp_pc_letter = "F#{sharp} /G#{flat} "
-        when 7; temp_pc_letter = "G"
-        when 8; temp_pc_letter = "G#{sharp} /A#{flat} "
-        when 9; temp_pc_letter = "A"
-        when 10; temp_pc_letter = "A#{sharp} /B#{flat} "
-        when 11; temp_pc_letter = "B"
-      end
-      pc_letter << temp_pc_letter
-    end
-    return pc_letter.join("-")
-  end
-
-# game logic
 
   def getICPrimeForm(sonority) # puts sonority in ic prime form (not pc prime form!)
     # this method won't necessarily work for sonorities of more than four pcs,
@@ -476,10 +416,10 @@ class TilesState
     else
       real_root = ((t_adjust_root[t_index] + fake_root) % 12).to_s(12)
     end
-    return convertPCIntegerToLetter(real_root), t_names[t_index]
+    return convertPCIntegersToLetters(real_root), t_names[t_index]
   end
 
-# Views
+# VIEWS (for console)
 
   def showPile # shows sorted pile
     if @pile.count >= 1
@@ -531,6 +471,68 @@ class TilesState
       print "#{i.to_s(36)} "
     end
     print "\n"
+  end
+
+  def centerBoard # shows center of smallest rectangle that encloses all played dyadminos
+    # only for view purposes, data is unaffected
+    min_x = min_y = @board_size - 1
+    max_x = max_y = 0
+    @board_size.times do |j|
+      @board_size.times do |i|
+        if @filled_board_spaces[j][i] != :empty
+          min_x, min_y, max_x, max_y = [min_x, i].min, [min_y, j].min, [max_x, i].max, [max_y, j].max
+        end
+      end
+    end
+    center_x, center_y = (max_x + min_x) / 2, (max_y + min_y) / 2
+    print "center of board is at #{center_x}, #{center_y}\n"
+  end
+
+  def printMessage(message, sonority_string)
+    case message
+      when :illegal_occupied_space
+        print "You can't put one dyadmino on top of another.\n"
+      when :illegal_island
+        print "Please place the dyadmino next to another one.\n"
+      when :illegal_maxed_out_row
+        print "You can't have more than the max number in a row.\n"
+      when :illegal_repeated_pcs
+        print "You can't repeat the same pc in any given row.\n"
+      when :illegal_semitones
+        print "You can't have semitones under folk or rock rules.\n"
+      when :legal_chord
+            print "#{sonority_string} is a legal chord.\n"
+      when :legal_incomplete
+            print "[#{sonority_string}] is a legal incomplete seventh.\n"
+      when :illegal_sonority
+            print "[#{sonority_string}] isn't a legal sonority.\n"
+    else
+    end
+  end
+
+  def convertPCIntegersToLetters(pc_integer)
+    pc_letter = Array.new
+    sharp = "\u266f" # Unicode symbols for sharp and flat signs
+    flat = "\u266d" # Sublime Text 2 console doesn't recognize them
+    scale = ["C", "D", "E", "F", "G", "A", "B"]
+    pc_integer.each_char do |pc|
+      case pc.to_i(12)
+        when 0; temp_pc_letter = "C"
+        when 1; temp_pc_letter = "C#{sharp} /D#{flat} "
+        when 2; temp_pc_letter = "D"
+        when 3; temp_pc_letter = "D#{sharp} /E#{flat} "
+        when 4; temp_pc_letter = "E"
+        when 5; temp_pc_letter = "F"
+        when 6; temp_pc_letter = "F#{sharp} /G#{flat} "
+        when 7; temp_pc_letter = "G"
+        when 8; temp_pc_letter = "G#{sharp} /A#{flat} "
+        when 9; temp_pc_letter = "A"
+        when 10; temp_pc_letter = "A#{sharp} /B#{flat} "
+        when 11; temp_pc_letter = "B"
+      end
+      pc_letter << temp_pc_letter
+    end
+    return pc_letter.join("-")
   end
 
 end

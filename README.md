@@ -33,7 +33,7 @@ The interface
 Nomenclature
 ------------
 
-* "empty_slot" is a single free space on board, "monotile" is single piece, "dyadmino" is full piece
+* "space" is a single space on board, "monotile" is single piece, "dyadmino" is full piece
 * "rack" is the dyadminos currently in player's rack, "pile" is the rest
 * "pc" is a note, "pair", "triplet", and "quadruplet" are ANY 2,3 and 4 pcs in a row, legal or not
 * "dyad" and "inc_seventh" are LEGAL pairs and triplets that DON'T score
