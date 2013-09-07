@@ -35,22 +35,26 @@ class TilesState
 
   def createLegalChords
     if @rule < 5 # only the tonal rules have ic prime forms and incomplete sevenths
-      superset_chords = [345, 354, 2334, 2343, 2433, 336, 444, 3333, 1344, 1434, 1443, 246, 2424]
-      superset_incompletes = [264, 237, 336, 273, 246, 174, 138, 147, 183]
+      @tonal_chord_names = ["minor triad", "major triad", "half-diminished seventh", "minor seventh",
+          "dominant seventh", "diminished triad", "augmented triad", "fully diminished seventh",
+          "minor-major seventh", "major seventh", "augmented major seventh",
+          "Italian sixth", "French sixth"]
+      @superset_chords = [345, 354, 2334, 2343, 2433, 336, 444, 3333, 1344, 1434, 1443, 246, 2424]
+      @superset_incompletes = [264, 237, 336, 273, 246, 174, 138, 147, 183]
       case @rule
-        when 0; @legal_chords = superset_chords[0, 5]
-        when 1, 2; @legal_chords = superset_chords[0, 8]
-        when 3, 4; @legal_chords = superset_chords[0, 11]
+        when 0; @legal_chords = @superset_chords[0, 5]
+        when 1, 2; @legal_chords = @superset_chords[0, 8]
+        when 3, 4; @legal_chords = @superset_chords[0, 11]
       else
       end
-      [11, 12].each { |i| @legal_chords.push(superset_chords[i]) } if [2, 4].include?(@rule)
+      [11, 12].each { |i| @legal_chords.push(@superset_chords[i]) } if [2, 4].include?(@rule)
       # These are the two augmented sixths legal under classical rules
       if @rule < 3
-        @legal_incompletes = superset_incompletes[0, 5]
+        @legal_incompletes = @superset_incompletes[0, 5]
         # only the first five incompletes are legal under folk and rock rules;
         # the rest contain semitones
       else
-        @legal_incompletes = superset_incompletes
+        @legal_incompletes = @superset_incompletes
       end
     # for DEV: change octatonic and hexatonic rules, these should be PC SETS
     elsif @rule == 5 # octatonic membership
@@ -398,16 +402,11 @@ class TilesState
   def getRootAndType(icp_form, fake_root) # returns string for real root
     real_root = String.new
     # refactor? same array as superset of tonal ics in method to create array of all legal chords
-    tonal_ics = [345, 354, 2334, 2343, 2433, 336, 444, 3333, 1344, 1434, 1443, 246, 2424]
-    t_names = ["minor triad", "major triad", "half-diminished seventh", "minor seventh",
-              "dominant seventh", "diminished triad", "augmented triad", "fully diminished seventh",
-              "minor-major seventh", "major seventh", "augmented major seventh",
-              "Italian sixth", "French sixth"]
     t_adjust_root = [0, 8, 2, 2, 2, 0, 0, 0, 1, 1, 1, 2, 2] # adds to fake root to find correct root
     # for each symmetric chord, first value is ics, second value is mod number
     t_symmetric = [[444, 3333, 2424], [4, 3, 6]]
-    t_index = tonal_ics.index(icp_form.to_i)
-    sym_index = t_symmetric[0].index(tonal_ics[t_index])
+    t_index = @superset_chords.index(icp_form.to_i)
+    sym_index = t_symmetric[0].index(@superset_chords[t_index])
     if sym_index != nil
       mod = t_symmetric[1][sym_index]
       (12 / mod).times do |i|
@@ -416,7 +415,42 @@ class TilesState
     else
       real_root = ((t_adjust_root[t_index] + fake_root) % 12).to_s(12)
     end
-    return convertPCIntegersToLetters(real_root), t_names[t_index]
+    return convertPCIntegersToLetters(real_root), @tonal_chord_names[t_index]
+  end
+
+  def returnRandomSonority(card) # accepts a cardinal value
+    sonority = Array.new
+    until sonority.count == card
+      temp_pc = rand(12).to_s(12)
+      sonority << temp_pc unless sonority.include?(temp_pc)
+    end
+    return sonority.join("")
+  end
+
+  def testSonorityProbability(sample_size) # for dev purposes
+    # returns probability that any given sonority is a legal chord or incomplete
+    tally_of_legal_chords = Array.new(@legal_chords.count){ 0.0 }
+    tally_of_legal_incompletes = Array.new(@legal_incompletes.count){ 0.0 }
+    illegal_sonorities = 0.0
+    sample_size.times do
+      icp_form, fake_root = getICPrimeForm(returnRandomSonority(rand(2) + 3))
+      if isThisSonorityLegal?(icp_form, @legal_chords)
+        tally_of_legal_chords[@legal_chords.index icp_form.to_i] += 1.0
+      elsif isThisSonorityLegal?(icp_form, @legal_incompletes) && icp_form.length == 3
+        tally_of_legal_incompletes[@legal_incompletes.index icp_form.to_i] += 1.0
+      else
+        illegal_sonorities += 1.0
+      end
+    end
+    print "\nLegal chords:\n"
+    tally_of_legal_chords.count.times do |i|
+      print "#{((tally_of_legal_chords[i] / sample_size) * 100).round(1)}% #{@tonal_chord_names[i]}\n"
+    end
+    print "\nLegal incompletes:\n"
+    tally_of_legal_incompletes.count.times do |i|
+      print "#{((tally_of_legal_incompletes[i] / sample_size) * 100).round(1)}% [#{@legal_incompletes[i]}]\n"
+    end
+    print "\nIllegal sonorities:\n#{((illegal_sonorities / sample_size) * 100).round(1)}\n"
   end
 
 # VIEWS (for console)
