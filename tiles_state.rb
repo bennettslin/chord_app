@@ -1,6 +1,7 @@
 class TilesState
 
   def initialize(rule)
+    @testing == false # true represents a testing environment
     @legal_chords, @legal_incompletes = Array.new(2) { [] }
     @rule = rule
     case @rule # number of dyadminos in rack will vary by rules
@@ -13,7 +14,7 @@ class TilesState
     end
     @pile = Array.new # list of 66 dyadminoes by duodecimal notation
     # board is hexagonal with x and y axes; the z axis is the (x = -y) diagonal line
-    @board_size = 8 # mod number, kept small for dev purposes; for production,
+    @board_size = 25 # mod number, kept small for dev purposes; for production,
     # board size should be large enough that players won't notice when edges wrap back around
     @board_spaces = Array.new # assigns board dyadminoes to board spaces for game logic
     @rack_slots = Array.new # assigns rack dyadminoes to rack slots
@@ -128,7 +129,7 @@ class TilesState
   def flipDyadmino(slot_num)
     @rack_slots[slot_num][:orient] += 1 # value toggles between 0 and 1
     @rack_slots[slot_num][:orient] %= 2
-    showRack
+    showRack unless @testing
   end
 
   def swapDyadminos(slot_1, slot_2)
@@ -164,13 +165,14 @@ class TilesState
     # then checks whether all possible sonorities made are legal;
     # if so, places dyadmino on board and refills rack from pile if possible;
     # otherwise, prints error message to user
+    legal_move = false
     lower_x, lower_y, higher_x, higher_y =
       orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
     if isOccupiedSpace?(lower_x, lower_y) || isOccupiedSpace?(higher_x, higher_y)
-      printMessage(:illegal_occupied_space, nil)
+      print printMessage(:illegal_occupied_space, nil)
       return false
     elsif isIslandSpace?(lower_x, lower_y) && isIslandSpace?(higher_x, higher_y)
-      printMessage(:illegal_island, nil)
+      print printMessage(:illegal_island, nil)
       return false
     else
       this_sonority = Array.new
@@ -178,32 +180,65 @@ class TilesState
       this_sonority =
         scanNeighboringSpaces(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
       if this_sonority.class == Symbol
-        printMessage(this_sonority, nil)
+        print printMessage(this_sonority, nil)
         return false
       else
+        array_of_user_messages = Array.new
         this_sonority.each do |son|
-          if son.length >= 3
-            whether_legal_chord, chord_root_and_type = checkLegalChord(son)
-            if whether_legal_chord
-              printMessage(:legal_chord, chord_root_and_type)
-            end
-          elsif son.length < 3 # monad or dyad, no action or message
+          whether_legal_chord, chord_root_and_type = checkLegalChord(son)
+          if son.length >= 3 && whether_legal_chord
+            legal_move = true
+            array_of_user_messages << printMessage(:legal_chord, chord_root_and_type)
           elsif son.length == 3 && checkLegalIncomplete(son)
-            printMessage(:legal_incomplete, son)
+            legal_move = true
+            array_of_user_messages << printMessage(:legal_incomplete, son)
+          elsif son.length < 3 # monad or dyad, no action or message
           else
-            printMessage(:illegal_sonority, son)
+            print printMessage(:illegal_sonority, son)
             return false
           end
         end
+        array_of_user_messages.each { |message| print message }
       end
-      ontoBoard(@rack_slots[slot_num][:pcs], lower_x, lower_y, higher_x, higher_y)
-      showBoard
-      intoRack(slot_num)
+      if legal_move
+        ontoBoard(@rack_slots[slot_num][:pcs], lower_x, lower_y, higher_x, higher_y)
+        intoRack(slot_num)
+        showBoard
+      else
+        print printMessage(:no_legal_sonority, nil)
+        return false
+      end
     end
     showRack
+    return true if @testing
   end
 
-# PHYSICAL LOGIC
+  # very brute force approach, can definitely be made much more efficient
+  def playRandomLegalChord
+    # for dev purposes, maybe can be used later for AI opponent
+    shuffled_rack_slot_nums = [*0..(@rack_slots.count - 1)].shuffle
+    shuffled_board_orients = [*0..5].shuffle
+    shuffled_empty_neighbor_spaces = returnEmptyNeighborSpaces.shuffle
+    shuffled_empty_neighbor_spaces.each do |coord|
+      x, y = coord[0], coord[1]
+      shuffled_board_orients.each do |orient| # determines which orientations are legal
+        shuffled_rack_slot_nums.each do |slot_num|
+          @rack_slots[slot_num][:orient] = rand(2)
+          2.times do
+            return true if playDyadmino(slot_num, x, y, orient)
+            flipDyadmino(slot_num)
+          end
+        end
+      end
+    end
+    return false
+  end
+
+  def testing # makes this instance a testing environment
+    @testing = true
+  end
+
+# BOARD LOGIC
 
   def orientToBoard(top_x, top_y, rack_orient, board_orient) # changes rack orient to board coord
     bottom_x, bottom_y = top_x, top_y # temporarily makes bottom pc coords same as top
@@ -258,9 +293,10 @@ class TilesState
               # establishes that the pc in the temporary container is NOT the empty slot
               # where the dyadmino might go
               case dir
-              when :se_to_nw; temp_y = (temp_y + vector) % @board_size
-              when :eastwest; temp_x = (temp_x + vector) % @board_size
-              when :sw_to_ne; temp_x, temp_y = (temp_x + vector) % @board_size, (temp_y - vector) % @board_size
+                when :se_to_nw; temp_y = (temp_y + vector) % @board_size
+                when :eastwest; temp_x = (temp_x + vector) % @board_size
+                when :sw_to_ne; temp_x, temp_y = (temp_x + vector) % @board_size,
+                  (temp_y - vector) % @board_size
               end
               if temp_x == lower_x && temp_y == lower_y
                 temp_pc = lower_pc
@@ -272,7 +308,6 @@ class TilesState
               if temp_sonority.count > max_card
                 return :illegal_maxed_out_row
               elsif temp_pc != :empty && temp_sonority.include?(temp_pc)
-                print temp_pc
                 return :illegal_repeated_pcs
               elsif @rule < 3 # ensures there are no semitones when playing by folk and rock rules
                 [-1, 1].each do |j|
@@ -309,8 +344,8 @@ class TilesState
     return true
   end
 
-  def returnRandomEmptyNeighborSpace
-    # scans board and returns a random empty space that has a filled neighbor
+  def returnEmptyNeighborSpaces
+    # scans board and returns an array of every empty space that has a filled neighbor
     array_of_empty_neighbor_spaces = Array.new
     @filled_board_spaces.each_index do |y|
       @filled_board_spaces[y].each_index do |x|
@@ -324,8 +359,7 @@ class TilesState
         end
       end
     end
-    random_coord = array_of_empty_neighbor_spaces.uniq.sample
-    return random_coord[0], random_coord[1]
+    return array_of_empty_neighbor_spaces.uniq!
   end
 
 # MUSICAL LOGIC
@@ -523,24 +557,30 @@ class TilesState
   end
 
   def printMessage(message, sonority_string)
+    unless @testing
+      case message
+        when :illegal_occupied_space
+          "You can't put one dyadmino on top of another.\n"
+        when :illegal_island
+          "Please place the dyadmino next to another one.\n"
+        when :illegal_maxed_out_row
+          "You can't have more than the max number in a row.\n"
+        when :illegal_repeated_pcs
+          "You can't repeat the same pc in any given row.\n"
+        when :illegal_semitones
+          "You can't have semitones under folk or rock rules.\n"
+        when :illegal_sonority
+          "[#{sonority_string}] isn't a legal sonority.\n"
+        when :no_legal_sonority
+          "You need at least one legal sonority.\n"
+      end
+    end
     case message
-      when :illegal_occupied_space
-        print "You can't put one dyadmino on top of another.\n"
-      when :illegal_island
-        print "Please place the dyadmino next to another one.\n"
-      when :illegal_maxed_out_row
-        print "You can't have more than the max number in a row.\n"
-      when :illegal_repeated_pcs
-        print "You can't repeat the same pc in any given row.\n"
-      when :illegal_semitones
-        print "You can't have semitones under folk or rock rules.\n"
       when :legal_chord
-            print "#{sonority_string} is a legal chord.\n"
+        "#{sonority_string} is a legal chord.\n"
       when :legal_incomplete
-            print "[#{sonority_string}] is a legal incomplete seventh.\n"
-      when :illegal_sonority
-            print "[#{sonority_string}] isn't a legal sonority.\n"
-    else
+        "[#{sonority_string}] is a legal incomplete seventh.\n"
+      else
     end
   end
 

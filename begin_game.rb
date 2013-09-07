@@ -15,14 +15,18 @@ game_tiles = TilesState.new(ask_rule.to_i)
 
 
 if ask_init.to_i > 6
+  game_tiles.testing
   game_tiles.testSonorityProbability(ask_init.to_i)
 else # play by rules
   rule = ask_init.to_i
   loop do
     puts "*" * 72
-    ask_slot = ask("Enter slot number to perform action on:\n(or 'b' for board, 'r' for rack, 'p' for pile, or 'q' to quit)")
+    ask_slot = ask("Enter slot number to perform action on, or 'm' for a random legal move.\n(or 'b' for board, 'r' for rack, 'p' for pile, or 'q' to quit)")
     if ask_slot[0] == "q"
       break
+    elsif ask_slot[0] == "m"
+      game_tiles.testing
+      print "There is no legal move to be made.\n" if !game_tiles.playRandomLegalChord
     elsif ask_slot[0] == "b"
       game_tiles.showBoard
     elsif ask_slot[0] == "p"
@@ -32,7 +36,7 @@ else # play by rules
     elsif
       slot_num = ask_slot[0].to_i
       if slot_num.to_i.class == Fixnum
-        ask_action = ask("Choose 'f' to flip, 'r' to replace, 'p' to play\nor second slot number to swap:")
+        ask_action = ask("Choose 'f' to flip, 'r' to replace, 'p' to play\nor second slot number to swap.")
         if ask_action[0] == "f"
           game_tiles.flipDyadmino(slot_num)
         elsif ask_action[0] == "r"
