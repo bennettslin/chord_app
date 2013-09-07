@@ -143,11 +143,11 @@ class TilesState
   def initialBoard # places random dyadmino from pile randomly onto board to start game
     rack_orient = rand(2) # as if it had come from the rack
     board_orient = rand(6) # random orientation
-    top_x = rand(@board_size) # random x, y coordinates
-    top_y = rand(@board_size)
+    @center_x = rand(@board_size) # random x, y coordinates
+    @center_y = rand(@board_size) # originally just rand(@board_size)
     # in each dyadmino, one pc always has a lower value than the other
     lower_x, lower_y, higher_x, higher_y =
-      orientToBoard(top_x, top_y, rack_orient, board_orient)
+      orientToBoard(@center_x, @center_y, rack_orient, board_orient)
     ontoBoard(fromPile, lower_x, lower_y, higher_x, higher_y)
   end
 
@@ -199,6 +199,7 @@ class TilesState
           end
         end
         array_of_user_messages.each { |message| print message }
+        # ensures no sonority in the array is illegal before printing legal messages
       end
       if legal_move
         ontoBoard(@rack_slots[slot_num][:pcs], lower_x, lower_y, higher_x, higher_y)
@@ -520,12 +521,18 @@ class TilesState
   def showBoard # hexagonal board is really 2x2 board with extra diagonal
     # board size > 36 will create double-digit coordinates in console;
     # this is fine since this method is only for dev purposes
-    centerBoard
+    center_x, center_y = centerBoard
+    origin_x, origin_y =
+      center_x - (@board_size / 2), center_y - (@board_size / 2)
+    print "center of board is at #{center_x}, #{center_y}\n"
     (@board_size - 1).step(0, -1) do |j|
-      print "#{" " * j}#{j.to_s(36)}|"
-      temp_array = @filled_board_spaces[j]
+      print "#{" " * j}#{((j + origin_y) % @board_size).to_s(36)}|"
+      temp_array = @filled_board_spaces[(j + origin_y) % @board_size]
       @board_size.times do |i|
-        print "#{temp_array[i] == :empty ? "." : temp_array[i]} "
+        # temp_array[i] = "t" if temp_array[i] == "a" # real post-tonal notation
+        # temp_array[i] = "e" if temp_array[i] == "b"
+        print "#{temp_array[(i + origin_x) % @board_size] == :empty ?
+          "." : temp_array[(i + origin_x) % @board_size]} "
       end
       case j
         when 2; print "  |  4 5  | how hexagonal orientation works:"
@@ -536,25 +543,37 @@ class TilesState
     end
     print " #{"-" * 2 * @board_size}\n"
     @board_size.times do |i|
-      print "#{i.to_s(36)} "
+      print "#{((i + origin_x) % @board_size).to_s(36)} "
     end
     print "\n"
   end
 
   def centerBoard # shows center of smallest rectangle that encloses all played dyadminos
     # only for view purposes, data is unaffected
-    min_x = min_y = @board_size - 1
-    max_x = max_y = 0
-    @board_size.times do |j|
-      @board_size.times do |i|
-        if @filled_board_spaces[j][i] != :empty
-          min_x, min_y, max_x, max_y = [min_x, i].min, [min_y, j].min, [max_x, i].max, [max_y, j].max
-        end
-      end
-    end
-    center_x, center_y = (max_x + min_x) / 2, (max_y + min_y) / 2
-    print "center of board is at #{center_x}, #{center_y}\n"
+    # for DEV: figure out a better algorithm eventually
+    min_x = max_x = @center_x
+    min_y = max_y = @center_y
+    # refactor, obviously
+    min_y += -1 until (@filled_board_spaces[min_y % @board_size] - [:empty]).empty? ||
+      min_y % @board_size == @center_y + 1
+    max_y += 1 until (@filled_board_spaces[max_y % @board_size] - [:empty]).empty? ||
+      max_y % @board_size == @center_y - 1
+    # for DEV: I didn't know a better way to iterate across arrays within arrays
+    # as if x and y axes were switched, so this needs to be refactored
+    begin
+      temp_array = Array.new
+      min_x += -1
+      @board_size.times { |j| temp_array << @filled_board_spaces[j][min_x % @board_size] }
+    end until (temp_array - [:empty]).empty? || min_x % @board_size == @center_x + 1
+    begin
+      temp_array = Array.new
+      max_x += 1
+      @board_size.times { |j| temp_array << @filled_board_spaces[j][max_x % @board_size] }
+    end until (temp_array - [:empty]).empty? || max_x % @board_size == @center_x - 1
+    @center_x, @center_y = (max_x + min_x) / 2, (max_y + min_y) / 2
+    return @center_x, @center_y
   end
+
 
   def printMessage(message, sonority_string)
     unless @testing

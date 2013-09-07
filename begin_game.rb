@@ -21,7 +21,7 @@ else # play by rules
   rule = ask_init.to_i
   loop do
     puts "*" * 72
-    ask_slot = ask("Enter slot number to perform action on, or 'm' for a random legal move.\n(or 'b' for board, 'r' for rack, 'p' for pile, or 'q' to quit)")
+    ask_slot = ask("Enter slot number to choose dyadmino, or 'm' to play a random legal move.\n(or 'b' for board, 'r' for rack, 'p' for pile, or 'q' to quit)")
     if ask_slot[0] == "q"
       break
     elsif ask_slot[0] == "m"
