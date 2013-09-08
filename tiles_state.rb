@@ -1,7 +1,7 @@
 class TilesState
 
   def initialize(rule)
-    @testing = 0 # 1 represents human testing, 2 represents machine testing
+    @testing = 0 # 0 is regular play, 1 is human testing, 2 is machine testing
     @legal_chords, @legal_incompletes = Array.new(2) { [] }
     @rule = rule
     case @rule # number of dyadminos in rack will vary by rules
@@ -25,6 +25,7 @@ class TilesState
       @board_size.times { temp_array << :empty }
       @filled_board_spaces << temp_array
     end
+    @score = 0
     createLegalChords
     createPile
     initialRack
@@ -117,22 +118,23 @@ class TilesState
       intoRack(slot_num)
       intoPile(held_pc)
     end
-    showPile
-    showRack
+    showPile unless @testing > 0
+    showRack unless @testing > 0
   end
 
 # RACK STATE CHANGES
 
-  def flipDyadmino(slot_num)
+  def flipDyadmino(slot_num) # flips dyadmino upside-down in rack
     @rack_slots[slot_num][:orient] += 1 # value toggles between 0 and 1
     @rack_slots[slot_num][:orient] %= 2
     showRack unless @testing > 0
   end
 
   def swapDyadminos(slot_1, slot_2)
+    # places one dyadmino in another's slot on the rack and vice versa
     @rack_slots[slot_1], @rack_slots[slot_2] =
       @rack_slots[slot_2], @rack_slots[slot_1]
-    showRack
+    showRack unless @testing > 0
   end
 
 # BOARD STATE CHANGES
@@ -143,51 +145,58 @@ class TilesState
     @center_x = rand(@board_size) # random x, y coordinates
     @center_y = rand(@board_size) # originally just rand(@board_size)
     # in each dyadmino, one pc always has a lower value than the other
-    lower_x, lower_y, higher_x, higher_y =
+    low_x, low_y, high_x, high_y =
       orientToBoard(@center_x, @center_y, rack_orient, board_orient)
-    ontoBoard(fromPile, lower_x, lower_y, higher_x, higher_y)
+    ontoBoard(fromPile, low_x, low_y, high_x, high_y)
   end
 
-  def ontoBoard(pcs, lower_x, lower_y, higher_x, higher_y)
-    @filled_board_spaces[lower_y][lower_x] = pcs[0]
-    @filled_board_spaces[higher_y][higher_x] = pcs[1]
-    @board_spaces << { pcs: pcs, lower_x: lower_x, lower_y: lower_y,
-      higher_x: higher_x, higher_y: higher_y }
+  def ontoBoard(pcs, low_x, low_y, high_x, high_y)
+    # places dyadmino on board and records state
+    @filled_board_spaces[low_y][low_x] = pcs[0]
+    @filled_board_spaces[high_y][high_x] = pcs[1]
+    @board_spaces << { pcs: pcs, low_x: low_x, low_y: low_y,
+      high_x: high_x, high_y: high_y }
   end
 
 # CONTROLLERS
 
   def playDyadmino(slot_num, top_x, top_y, board_orient)
   # converts to board orientation, checks if legal move, and if so commits it
-    lower_x, lower_y, higher_x, higher_y =
+    low_x, low_y, high_x, high_y =
       orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
-    if checkMove(slot_num, lower_x, lower_y, higher_x, higher_y)
-      commitMove(slot_num, lower_x, lower_y, higher_x, higher_y)
+    move_legal, potential_points =
+      checkMove(slot_num, low_x, low_y, high_x, high_y)
+    if move_legal
+      commitMove(slot_num, low_x, low_y, high_x, high_y, potential_points)
     end
   end
 
-  def checkMove(slot_num, lower_x, lower_y, higher_x, higher_y)
+  def checkMove(slot_num, low_x, low_y, high_x, high_y)
+    # method to be called by either player or machine
     # first checks if physical placement of dyadmino is legal,
     # then checks whether all possible sonorities made are legal
-    if !thisMoveLegalPhysically?(lower_x, lower_y, higher_x, higher_y)
-      return false
-    elsif thisMoveLegalMusically?(slot_num, lower_x, lower_y, higher_x, higher_y)
-      return true
+    return false if !thisMoveLegalPhysically?(low_x, low_y, high_x, high_y)
+    musically_legal, potential_points =
+      thisMoveLegalMusically?(slot_num, low_x, low_y, high_x, high_y)
+    if musically_legal
+      return true, potential_points
     else
       printMessage(:no_legal_chord, nil) unless @testing > 0
       return false
     end
   end
 
-  def commitMove(slot_num, lower_x, lower_y, higher_x, higher_y)
+  def commitMove(slot_num, low_x, low_y, high_x, high_y, potential_points)
+    # method to be called by either player or machine
     # once move is deemed legal, permanently changes state of pile, rack, and board
-    ontoBoard(@rack_slots[slot_num][:pcs], lower_x, lower_y, higher_x, higher_y)
+    ontoBoard(@rack_slots[slot_num][:pcs], low_x, low_y, high_x, high_y)
     intoRack(slot_num)
+    @score += potential_points
   end
 
   # brute force approach, maybe can be made more efficient?
   def playRandomLegalChord
-    # for dev purposes, maybe can be used later for AI opponent
+    # now only for dev testing purposes, but to be used later by AI opponent
     shuffled_rack_slot_nums = [*0..(@rack_slots.count - 1)].shuffle
     shuffled_board_orients = [*0..5].shuffle
     shuffled_empty_neighbor_spaces = returnEmptyNeighborSpaces.shuffle
@@ -197,10 +206,13 @@ class TilesState
         shuffled_rack_slot_nums.each do |slot_num|
           @rack_slots[slot_num][:orient] = rand(2)
           2.times do
-            lower_x, lower_y, higher_x, higher_y =
+            low_x, low_y, high_x, high_y =
               orientToBoard(x, y, @rack_slots[slot_num][:orient], board_orient)
-            if checkMove(slot_num, lower_x, lower_y, higher_x, higher_y)
-              commitMove(slot_num, lower_x, lower_y, higher_x, higher_y)
+              # refactor? same code as playDyadmino
+              move_legal, potential_points =
+                checkMove(slot_num, low_x, low_y, high_x, high_y)
+              if move_legal
+                commitMove(slot_num, low_x, low_y, high_x, high_y, potential_points)
               return true
             end
             flipDyadmino(slot_num)
@@ -212,12 +224,14 @@ class TilesState
   end
 
   def testing(value) # makes this instance a testing environment
+    # 0 is regular play, 1 is human testing, 2 is machine testing
     @testing = value
   end
 
 # BOARD LOGIC
 
-  def orientToBoard(top_x, top_y, rack_orient, board_orient) # changes rack orient to board coord
+  def orientToBoard(top_x, top_y, rack_orient, board_orient)
+    # converts rack orientation parameters to board coordinates
     bottom_x, bottom_y = top_x, top_y # temporarily makes bottom pc coords same as top
     x_deviate = y_deviate = 0 # how bottom coordinates deviate from top
     case board_orient # coords for two pcs will be off by one in one axis
@@ -233,18 +247,19 @@ class TilesState
     # player's understanding of dyadmino orient is based on placement on rack;
     # this assigns board coord based on lower and higher pcs instead
     if rack_orient == 0
-      lower_x, lower_y, higher_x, higher_y = top_x, top_y, bottom_x, bottom_y
+      low_x, low_y, high_x, high_y = top_x, top_y, bottom_x, bottom_y
     else
-      lower_x, lower_y, higher_x, higher_y = bottom_x, bottom_y, top_x, top_y
+      low_x, low_y, high_x, high_y = bottom_x, bottom_y, top_x, top_y
     end
-    return lower_x, lower_y, higher_x, higher_y
+    return low_x, low_y, high_x, high_y
   end
 
-  def thisMoveLegalPhysically?(lower_x, lower_y, higher_x, higher_y)
-    if isOccupiedSpace?(lower_x, lower_y) || isOccupiedSpace?(higher_x, higher_y)
+  def thisMoveLegalPhysically?(low_x, low_y, high_x, high_y)
+    # checks that dyadmino ISN'T placed over, but IS placed next to, another one
+    if isOccupiedSpace?(low_x, low_y) || isOccupiedSpace?(high_x, high_y)
       printMessage(:illegal_occupied_space, nil) unless @testing > 0
       return false
-    elsif isIslandSpace?(lower_x, lower_y) && isIslandSpace?(higher_x, higher_y)
+    elsif isIslandSpace?(low_x, low_y) && isIslandSpace?(high_x, high_y)
       printMessage(:illegal_island, nil) unless @testing > 0
       return false
     else
@@ -257,7 +272,7 @@ class TilesState
   end
 
   def isIslandSpace?(x, y)
-    # determines that a given empty space is not next to a filled one on the board
+    # determines that a given empty space is NOT next to a filled one on the board
     [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
       temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
       if @filled_board_spaces[temp_y][temp_x] != :empty
@@ -268,22 +283,23 @@ class TilesState
     return true
   end
 
-  def scanNeighboringSpaces(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
-    # only checks if dyadmino placement is illegal for physical reasons:
-    # repeated pcs, more than the maximum allowed in a row, and semitones under folk or rock rules
-    # if legal, returns all sonorities larger than monads
+  def scanSurroundingSpaces(low_pc, low_x, low_y, high_pc, high_x, high_y)
+    # to be refactored?
+    # returns EVERY sonority a dyad or larger that is formed by the given dyadmino placement
+    # UNLESS it finds: repeated pcs, more than the maximum allowed in a row,
+    # and semitones under folk or rock rules (this should be its own method)
     case @rule
       when (0..4) ; max_card = 4
       when 5; max_card = 8
       when 6; max_card = 6
     end
     array_of_sonorities = Array.new
-    pcs_to_check = [{ pc: lower_pc, x: lower_x, y: lower_y },
-      { pc: higher_pc, x: higher_x, y: higher_y }]
+    pcs_to_check = [{ pc: low_pc, x: low_x, y: low_y },
+      { pc: high_pc, x: high_x, y: high_y }]
     directions_to_check = [:eastwest, :se_to_nw, :sw_to_ne]
-    if lower_y == higher_y # ensures that same direction of dyadmino orientation isn't checked twice
+    if low_y == high_y # ensures that same direction of dyadmino orientation isn't checked twice
       parallel_axis = directions_to_check[0]
-    elsif lower_x == higher_x
+    elsif low_x == high_x
       parallel_axis = directions_to_check[1]
     else
       parallel_axis = directions_to_check[2]
@@ -291,7 +307,7 @@ class TilesState
     pcs_to_check.each do |origin|
       directions_to_check.each do |dir|
         temp_sonority = [origin[:pc]]
-        unless origin[:pc] == higher_pc && parallel_axis == dir
+        unless origin[:pc] == high_pc && parallel_axis == dir
           [-1, 1].each do |vector| # checks in both directions
             temp_pc, temp_x, temp_y = String.new, origin[:x], origin[:y]
             while temp_pc != :empty
@@ -303,13 +319,15 @@ class TilesState
                 when :sw_to_ne; temp_x, temp_y = (temp_x + vector) % @board_size,
                   (temp_y - vector) % @board_size
               end
-              if temp_x == lower_x && temp_y == lower_y
-                temp_pc = lower_pc
-              elsif temp_x == higher_x && temp_y == higher_y
-                temp_pc = higher_pc
+
+              if temp_x == low_x && temp_y == low_y
+                temp_pc = low_pc
+              elsif temp_x == high_x && temp_y == high_y
+                temp_pc = high_pc
               else
                 temp_pc = @filled_board_spaces[temp_y][temp_x]
               end
+
               if temp_sonority.count > max_card
                 return :illegal_maxed_out_row
               elsif temp_pc != :empty && temp_sonority.include?(temp_pc)
@@ -321,6 +339,7 @@ class TilesState
                   end
                 end
               end
+
               if temp_pc != :empty
                 vector == -1 ? temp_sonority.unshift(temp_pc) : temp_sonority.push(temp_pc)
               end
@@ -334,7 +353,7 @@ class TilesState
   end
 
   def returnEmptyNeighborSpaces
-    # scans board and returns an array of every empty space that has a filled neighbor
+    # scans board and returns an array of EVERY empty space that has a filled neighbor
     array_of_empty_neighbor_spaces = Array.new
     @filled_board_spaces.each_index do |y|
       @filled_board_spaces[y].each_index do |x|
@@ -353,27 +372,28 @@ class TilesState
 
 # MUSICAL LOGIC
 
-  def thisMoveLegalMusically?(slot_num, lower_x, lower_y, higher_x, higher_y)
+  def thisMoveLegalMusically?(slot_num, low_x, low_y, high_x, high_y)
+    # finds all sonorities made by this move and ensures that none are illegal
+    # (as detected by scanSurroundingSpaces method) and AT LEAST one legal chord is made
+    # and returns potential_points to be earned if move is committed
+    potential_points = 0
     legal_move = false # illegal until proven otherwise
     this_sonority = Array.new
-    lower_pc, higher_pc = @rack_slots[slot_num][:pcs][0], @rack_slots[slot_num][:pcs][1]
+    low_pc, high_pc = @rack_slots[slot_num][:pcs][0], @rack_slots[slot_num][:pcs][1]
     this_sonority =
-      scanNeighboringSpaces(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
-    if this_sonority.class == Symbol
+      scanSurroundingSpaces(low_pc, low_x, low_y, high_pc, high_x, high_y)
+    if this_sonority.class == Symbol # this means it's an error
       printMessage(this_sonority, nil) unless @testing > 0
       return false
     else
-      array_of_user_messages = Array.new
+      array_of_all_legal_chords = Array.new
       this_sonority.each do |son|
         whether_legal_chord, chord_root_and_type = checkLegalChord(son)
         if son.length >= 3 && whether_legal_chord
           legal_move = true
-          array_of_user_messages << [:legal_chord, son, chord_root_and_type]
+          array_of_all_legal_chords <<
+            { message: :legal_chord, sonority: son, chord_name: chord_root_and_type }
         elsif son.length == 3 && checkLegalIncomplete(son)
-          # uncomment to make legal incomplete by itself a legal move;
-          # otherwise, it's treated just like a legal dyad and not mentioned
-          # legal_move = true
-          # array_of_user_messages << [:legal_incomplete, son, chord_root_and_type] unless @testing > 0
         elsif son.length < 3 # dyad, no action or message
         else
           printMessage(:illegal_sonority, son) unless @testing > 0
@@ -382,22 +402,26 @@ class TilesState
       end
       unless @testing > 1
         # ensures no sonority in the array is illegal before printing legal messages
-        array_of_user_messages.each do |message|
-          printMessage(message[0], "[#{message[1]}], or #{message[2]},") if
-            message[0] == :legal_chord
+        array_of_all_legal_chords.each do |chord|
+          potential_points += 2 if chord[:sonority].length == 3
+          potential_points += 3 if chord[:sonority].length > 3
+          printMessage(chord[:message], "[#{chord[:sonority]}], or #{chord[:chord_name]},") if
+            chord[:message] == :legal_chord
         end
       end
     end
-    return true if legal_move
+    return true, potential_points if legal_move
   end
 
   def checkLegalIncomplete(sonority)
+    # returns true if this is a legal incomplete seventh under the given rules
     icp_form, fake_root = getICPrimeForm(sonority)
     whether_legal_incomplete = thisSonorityLegal?(icp_form, @legal_incompletes)
     return whether_legal_incomplete
   end
 
   def checkLegalChord(sonority)
+    # returns true and chord name if this is a legal chord under the given rules
     icp_form, fake_root = getICPrimeForm(sonority)
     whether_legal_chord = thisSonorityLegal?(icp_form, @legal_chords)
     if whether_legal_chord
@@ -407,6 +431,8 @@ class TilesState
   end
 
   def thisSonorityLegal?(icp_form, array_of_sonorities)
+    # only returns whether this sonority is legal,
+    # NOT whether it will score points and thus count as a legal move on its own
     array_of_sonorities.include?(icp_form.to_i)
   end
 
@@ -479,7 +505,8 @@ class TilesState
     return convertPCIntegersToLetters(real_root), @tonal_chord_names[t_index]
   end
 
-  def returnRandomSonority(card) # accepts a cardinal value
+  def returnRandomSonority(card) # for dev testing purposes
+    # accepts a cardinal value from user or machine and returns a random sonority
     sonority = Array.new
     until sonority.count == card
       temp_pc = rand(12).to_s(12)
@@ -488,7 +515,7 @@ class TilesState
     return sonority.join("")
   end
 
-  def testSonorityProbability(sample_size) # for dev purposes
+  def testSonorityProbability(sample_size) # for dev testing purposes
     # returns probability that any given sonority is a legal chord or incomplete
     tally_of_legal_chords = Array.new(@legal_chords.count){ 0.0 }
     tally_of_legal_incompletes = Array.new(@legal_incompletes.count){ 0.0 }
@@ -514,9 +541,10 @@ class TilesState
     print "\nIllegal sonorities:\n#{((illegal_sonorities / sample_size) * 100).round(1)}\n"
   end
 
-# VIEWS (for console)
+# VIEWS (all of these are for the console, for now)
 
   def userView
+    showScore
     showPile
     showBoard
     showRack
@@ -578,6 +606,10 @@ class TilesState
       print "#{((i + origin_x) % @board_size).to_s(36)} "
     end
     print "\n"
+  end
+
+  def showScore
+    print "Your score is #{@score}.\n"
   end
 
   def centerBoard # shows center of smallest rectangle that encloses all played dyadminos

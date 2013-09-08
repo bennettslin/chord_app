@@ -12,19 +12,13 @@ game_tiles = TilesState.new(ask_rule.to_i)
 loop do
   game_tiles.userView
   puts "*" * 72
-  ask_slot = ask("Enter slot number to choose dyadmino, or 'm' to play a random legal move.\n(or 'b' for board, 'r' for rack, 'p' for pile, or 'q' to quit)")
+  ask_slot = ask("Enter rack slot number, or 'm' to play a random legal move.\n(or 'q' to quit)")
   if ask_slot[0] == "q"
     break
   elsif ask_slot[0] == "m"
     game_tiles.testing(1)
     print "There is no legal move to be made.\n" if !game_tiles.playRandomLegalChord
     game_tiles.testing(0)
-  elsif ask_slot[0] == "b"
-    game_tiles.showBoard
-  elsif ask_slot[0] == "p"
-    game_tiles.showPile
-  elsif ask_slot[0] == "r"
-    game_tiles.showRack
   elsif
     slot_num = ask_slot[0].to_i
     if slot_num.to_i.class == Fixnum
