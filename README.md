@@ -3,17 +3,10 @@ Dyadminos! A Musical Tile Game
 
 This is a musical tile game that I'm working on just for fun. Basically, it's like Scrabble except with musical chords instead of words, and the playing pieces will resemble dominos with a different musical note on each face.
 
-Is this a chord?
-----------------
-
-*Require Highline gem.*
-
-This is a quick and easy app that just prints out the interval-class prime form and type of chord, if any, of a given set of pitch-classes based on user input.
-
 The game logic
 --------------
 
-*Requires Highline gem. Run begin.rb in console.*
+*Requires Highline gem. Run begin_game.rb in console. For now, only rules 0 through 4 work correctly. You can just keep hitting 'm' to make a random legal move.*
 
 This app will provide the game logic. Each dyadmino is like a domino with a different musical note on each face. This app generates the pile, then keeps track of which dyadminos are on the player's rack, on the gameboard, or still in the pile. The player may flip or swap the dyadminos on her rack, replace one for another in the pile, or else place one on the gameboard. The app will determine whether her move is legal. She is free to form complete chords which score points, or incomplete chords which score no points. She cannot place one dyadmino over one already on the board or repeat a note in the same row.
 
@@ -29,6 +22,14 @@ The interface
 *Requires Gosu gem. Run main.rb in console.*
 
 *Note:* After tinkering around with the Gosu gem, I've decided it would be more productive to dive straight into the RubyMotion toolkit instead. So I'm going to work on finishing the game logic and hold off on programming the interface for now. I'm leaving this here for anyone who's interested.
+
+
+Is this a chord?
+----------------
+
+*Require Highline gem.*
+
+This is a quick and easy app that just prints out the interval-class prime form and type of chord, if any, of a given set of pitch-classes based on user input.
 
 Nomenclature
 ------------

@@ -1,7 +1,7 @@
 class TilesState
 
   def initialize(rule)
-    @testing == false # true represents a testing environment
+    @testing = 0 # 1 represents human testing, 2 represents machine testing
     @legal_chords, @legal_incompletes = Array.new(2) { [] }
     @rule = rule
     case @rule # number of dyadminos in rack will vary by rules
@@ -29,9 +29,6 @@ class TilesState
     createPile
     initialRack
     initialBoard
-    showPile
-    showBoard
-    showRack
   end
 
   def createLegalChords
@@ -81,7 +78,7 @@ class TilesState
         end
       end
     end
-    print "Pile count is #{@pile.count}.\n"
+    # print "Pile count is #{@pile.count}.\n"
   end
 
   def fromPile # draws random dyadmino from pile
@@ -129,7 +126,7 @@ class TilesState
   def flipDyadmino(slot_num)
     @rack_slots[slot_num][:orient] += 1 # value toggles between 0 and 1
     @rack_slots[slot_num][:orient] %= 2
-    showRack unless @testing
+    showRack unless @testing > 0
   end
 
   def swapDyadminos(slot_1, slot_2)
@@ -161,60 +158,34 @@ class TilesState
 # CONTROLLERS
 
   def playDyadmino(slot_num, top_x, top_y, board_orient)
-    # first checks if physical placement of dyadmino is legal;
-    # then checks whether all possible sonorities made are legal;
-    # if so, places dyadmino on board and refills rack from pile if possible;
-    # otherwise, prints error message to user
-    legal_move = false
+  # converts to board orientation, checks if legal move, and if so commits it
     lower_x, lower_y, higher_x, higher_y =
       orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
-    if isOccupiedSpace?(lower_x, lower_y) || isOccupiedSpace?(higher_x, higher_y)
-      print printMessage(:illegal_occupied_space, nil)
-      return false
-    elsif isIslandSpace?(lower_x, lower_y) && isIslandSpace?(higher_x, higher_y)
-      print printMessage(:illegal_island, nil)
-      return false
-    else
-      this_sonority = Array.new
-      lower_pc, higher_pc = @rack_slots[slot_num][:pcs][0], @rack_slots[slot_num][:pcs][1]
-      this_sonority =
-        scanNeighboringSpaces(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
-      if this_sonority.class == Symbol
-        print printMessage(this_sonority, nil)
-        return false
-      else
-        array_of_user_messages = Array.new
-        this_sonority.each do |son|
-          whether_legal_chord, chord_root_and_type = checkLegalChord(son)
-          if son.length >= 3 && whether_legal_chord
-            legal_move = true
-            array_of_user_messages << printMessage(:legal_chord, chord_root_and_type)
-          elsif son.length == 3 && checkLegalIncomplete(son)
-            legal_move = true
-            array_of_user_messages << printMessage(:legal_incomplete, son)
-          elsif son.length < 3 # monad or dyad, no action or message
-          else
-            print printMessage(:illegal_sonority, son)
-            return false
-          end
-        end
-        array_of_user_messages.each { |message| print message }
-        # ensures no sonority in the array is illegal before printing legal messages
-      end
-      if legal_move
-        ontoBoard(@rack_slots[slot_num][:pcs], lower_x, lower_y, higher_x, higher_y)
-        intoRack(slot_num)
-        showBoard
-      else
-        print printMessage(:no_legal_sonority, nil)
-        return false
-      end
+    if checkMove(slot_num, lower_x, lower_y, higher_x, higher_y)
+      commitMove(slot_num, lower_x, lower_y, higher_x, higher_y)
     end
-    showRack
-    return true if @testing
   end
 
-  # very brute force approach, can definitely be made much more efficient
+  def checkMove(slot_num, lower_x, lower_y, higher_x, higher_y)
+    # first checks if physical placement of dyadmino is legal,
+    # then checks whether all possible sonorities made are legal
+    if !thisMoveLegalPhysically?(lower_x, lower_y, higher_x, higher_y)
+      return false
+    elsif thisMoveLegalMusically?(slot_num, lower_x, lower_y, higher_x, higher_y)
+      return true
+    else
+      printMessage(:no_legal_chord, nil) unless @testing > 0
+      return false
+    end
+  end
+
+  def commitMove(slot_num, lower_x, lower_y, higher_x, higher_y)
+    # once move is deemed legal, permanently changes state of pile, rack, and board
+    ontoBoard(@rack_slots[slot_num][:pcs], lower_x, lower_y, higher_x, higher_y)
+    intoRack(slot_num)
+  end
+
+  # brute force approach, maybe can be made more efficient?
   def playRandomLegalChord
     # for dev purposes, maybe can be used later for AI opponent
     shuffled_rack_slot_nums = [*0..(@rack_slots.count - 1)].shuffle
@@ -222,11 +193,16 @@ class TilesState
     shuffled_empty_neighbor_spaces = returnEmptyNeighborSpaces.shuffle
     shuffled_empty_neighbor_spaces.each do |coord|
       x, y = coord[0], coord[1]
-      shuffled_board_orients.each do |orient| # determines which orientations are legal
+      shuffled_board_orients.each do |board_orient| # determines which orientations are legal
         shuffled_rack_slot_nums.each do |slot_num|
           @rack_slots[slot_num][:orient] = rand(2)
           2.times do
-            return true if playDyadmino(slot_num, x, y, orient)
+            lower_x, lower_y, higher_x, higher_y =
+              orientToBoard(x, y, @rack_slots[slot_num][:orient], board_orient)
+            if checkMove(slot_num, lower_x, lower_y, higher_x, higher_y)
+              commitMove(slot_num, lower_x, lower_y, higher_x, higher_y)
+              return true
+            end
             flipDyadmino(slot_num)
           end
         end
@@ -235,8 +211,8 @@ class TilesState
     return false
   end
 
-  def testing # makes this instance a testing environment
-    @testing = true
+  def testing(value) # makes this instance a testing environment
+    @testing = value
   end
 
 # BOARD LOGIC
@@ -262,6 +238,34 @@ class TilesState
       lower_x, lower_y, higher_x, higher_y = bottom_x, bottom_y, top_x, top_y
     end
     return lower_x, lower_y, higher_x, higher_y
+  end
+
+  def thisMoveLegalPhysically?(lower_x, lower_y, higher_x, higher_y)
+    if isOccupiedSpace?(lower_x, lower_y) || isOccupiedSpace?(higher_x, higher_y)
+      printMessage(:illegal_occupied_space, nil) unless @testing > 0
+      return false
+    elsif isIslandSpace?(lower_x, lower_y) && isIslandSpace?(higher_x, higher_y)
+      printMessage(:illegal_island, nil) unless @testing > 0
+      return false
+    else
+      return true
+    end
+  end
+
+  def isOccupiedSpace?(x, y)
+    @filled_board_spaces[y][x] != :empty
+  end
+
+  def isIslandSpace?(x, y)
+    # determines that a given empty space is not next to a filled one on the board
+    [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
+      temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
+      if @filled_board_spaces[temp_y][temp_x] != :empty
+        return false
+      else
+      end
+    end
+    return true
   end
 
   def scanNeighboringSpaces(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
@@ -329,22 +333,6 @@ class TilesState
     return array_of_sonorities
   end
 
-  def isOccupiedSpace?(x, y)
-    @filled_board_spaces[y][x] != :empty
-  end
-
-  def isIslandSpace?(x, y)
-    # determines that a given empty space is not next to a filled one on the board
-    [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
-      temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
-      if @filled_board_spaces[temp_y][temp_x] != :empty
-        return false
-      else
-      end
-    end
-    return true
-  end
-
   def returnEmptyNeighborSpaces
     # scans board and returns an array of every empty space that has a filled neighbor
     array_of_empty_neighbor_spaces = Array.new
@@ -365,22 +353,60 @@ class TilesState
 
 # MUSICAL LOGIC
 
+  def thisMoveLegalMusically?(slot_num, lower_x, lower_y, higher_x, higher_y)
+    legal_move = false # illegal until proven otherwise
+    this_sonority = Array.new
+    lower_pc, higher_pc = @rack_slots[slot_num][:pcs][0], @rack_slots[slot_num][:pcs][1]
+    this_sonority =
+      scanNeighboringSpaces(lower_pc, lower_x, lower_y, higher_pc, higher_x, higher_y)
+    if this_sonority.class == Symbol
+      printMessage(this_sonority, nil) unless @testing > 0
+      return false
+    else
+      array_of_user_messages = Array.new
+      this_sonority.each do |son|
+        whether_legal_chord, chord_root_and_type = checkLegalChord(son)
+        if son.length >= 3 && whether_legal_chord
+          legal_move = true
+          array_of_user_messages << [:legal_chord, son, chord_root_and_type]
+        elsif son.length == 3 && checkLegalIncomplete(son)
+          # uncomment to make legal incomplete by itself a legal move;
+          # otherwise, it's treated just like a legal dyad and not mentioned
+          # legal_move = true
+          # array_of_user_messages << [:legal_incomplete, son, chord_root_and_type] unless @testing > 0
+        elsif son.length < 3 # dyad, no action or message
+        else
+          printMessage(:illegal_sonority, son) unless @testing > 0
+          return false
+        end
+      end
+      unless @testing > 1
+        # ensures no sonority in the array is illegal before printing legal messages
+        array_of_user_messages.each do |message|
+          printMessage(message[0], "[#{message[1]}], or #{message[2]},") if
+            message[0] == :legal_chord
+        end
+      end
+    end
+    return true if legal_move
+  end
+
   def checkLegalIncomplete(sonority)
     icp_form, fake_root = getICPrimeForm(sonority)
-    whether_legal_incomplete = isThisSonorityLegal?(icp_form, @legal_incompletes)
+    whether_legal_incomplete = thisSonorityLegal?(icp_form, @legal_incompletes)
     return whether_legal_incomplete
   end
 
   def checkLegalChord(sonority)
     icp_form, fake_root = getICPrimeForm(sonority)
-    whether_legal_chord = isThisSonorityLegal?(icp_form, @legal_chords)
+    whether_legal_chord = thisSonorityLegal?(icp_form, @legal_chords)
     if whether_legal_chord
       real_root, chord_type = getRootAndType(icp_form, fake_root)
     end
     return whether_legal_chord, [real_root, chord_type].join("-")
   end
 
-  def isThisSonorityLegal?(icp_form, array_of_sonorities)
+  def thisSonorityLegal?(icp_form, array_of_sonorities)
     array_of_sonorities.include?(icp_form.to_i)
   end
 
@@ -469,9 +495,9 @@ class TilesState
     illegal_sonorities = 0.0
     sample_size.times do
       icp_form, fake_root = getICPrimeForm(returnRandomSonority(rand(2) + 3))
-      if isThisSonorityLegal?(icp_form, @legal_chords)
+      if thisSonorityLegal?(icp_form, @legal_chords)
         tally_of_legal_chords[@legal_chords.index icp_form.to_i] += 1.0
-      elsif isThisSonorityLegal?(icp_form, @legal_incompletes) && icp_form.length == 3
+      elsif thisSonorityLegal?(icp_form, @legal_incompletes) && icp_form.length == 3
         tally_of_legal_incompletes[@legal_incompletes.index icp_form.to_i] += 1.0
       else
         illegal_sonorities += 1.0
@@ -489,6 +515,12 @@ class TilesState
   end
 
 # VIEWS (for console)
+
+  def userView
+    showPile
+    showBoard
+    showRack
+  end
 
   def showPile # shows sorted pile
     if @pile.count >= 1
@@ -524,7 +556,7 @@ class TilesState
     center_x, center_y = centerBoard
     origin_x, origin_y =
       center_x - (@board_size / 2), center_y - (@board_size / 2)
-    print "center of board is at #{center_x}, #{center_y}\n"
+    # print "Center of board is at #{center_x}, #{center_y}\n"
     (@board_size - 1).step(0, -1) do |j|
       print "#{" " * j}#{((j + origin_y) % @board_size).to_s(36)}|"
       temp_array = @filled_board_spaces[(j + origin_y) % @board_size]
@@ -550,7 +582,7 @@ class TilesState
 
   def centerBoard # shows center of smallest rectangle that encloses all played dyadminos
     # only for view purposes, data is unaffected
-    # for DEV: figure out a better algorithm eventually
+    # for DEV: for actual interface, improve this algorithm by weighting individual filled spaces
     min_x = max_x = @center_x
     min_y = max_y = @center_y
     # refactor, obviously
@@ -574,31 +606,26 @@ class TilesState
     return @center_x, @center_y
   end
 
-
   def printMessage(message, sonority_string)
-    unless @testing
-      case message
-        when :illegal_occupied_space
-          "You can't put one dyadmino on top of another.\n"
-        when :illegal_island
-          "Please place the dyadmino next to another one.\n"
-        when :illegal_maxed_out_row
-          "You can't have more than the max number in a row.\n"
-        when :illegal_repeated_pcs
-          "You can't repeat the same pc in any given row.\n"
-        when :illegal_semitones
-          "You can't have semitones under folk or rock rules.\n"
-        when :illegal_sonority
-          "[#{sonority_string}] isn't a legal sonority.\n"
-        when :no_legal_sonority
-          "You need at least one legal sonority.\n"
-      end
-    end
     case message
+      when :illegal_occupied_space
+        print "You can't put one dyadmino on top of another.\n"
+      when :illegal_island
+        print "Please place the dyadmino next to another one.\n"
+      when :illegal_maxed_out_row
+        print "You can't have more than the max number in a row.\n"
+      when :illegal_repeated_pcs
+        print "You can't repeat the same pc in any given row.\n"
+      when :illegal_semitones
+        print "You can't have semitones under folk or rock rules.\n"
+      when :illegal_sonority
+        print "[#{sonority_string}] isn't a legal sonority.\n"
+      when :no_legal_chord
+        print "You need to play at least one legal chord.\n"
       when :legal_chord
-        "#{sonority_string} is a legal chord.\n"
+        print "#{sonority_string} is a legal chord.\n"
       when :legal_incomplete
-        "[#{sonority_string}] is a legal incomplete seventh.\n"
+        print "[#{sonority_string}] is a legal incomplete seventh.\n"
       else
     end
   end
