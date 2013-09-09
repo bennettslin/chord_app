@@ -166,10 +166,10 @@ class TilesState
   # converts to board orientation, checks if legal move, and if so commits it
     low_x, low_y, high_x, high_y =
       orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
-    move_legal, array_of_all_legal_chord_descriptions =
+    move_legal, this_move_chord_titles =
       checkMove(slot_num, low_x, low_y, high_x, high_y)
     if move_legal
-      commitMove(slot_num, low_x, low_y, high_x, high_y, array_of_all_legal_chord_descriptions)
+      commitMove(slot_num, low_x, low_y, high_x, high_y, this_move_chord_titles)
     end
   end
 
@@ -186,7 +186,7 @@ class TilesState
     best_move = array_of_legal_moves[index_of_max_points]
     commitMove(best_move[:slot_num], best_move[:low_x], best_move[:low_y],
       best_move[:high_x], best_move[:high_y], best_move[:move_points],
-      best_move[:array_of_all_legal_chord_descriptions])
+      best_move[:this_move_chord_titles])
     return true
   end
 
@@ -207,17 +207,17 @@ class TilesState
             @test_counter += 1
             low_x, low_y, high_x, high_y =
               orientToBoard(x, y, @rack_slots[slot_num][:orient], board_orient)
-            move_legal, array_of_all_legal_chord_descriptions =
+            move_legal, this_move_chord_titles =
               checkMove(slot_num, low_x, low_y, high_x, high_y)
             if move_legal
               move_points = 0
-              array_of_all_legal_chord_descriptions.each do |description|
+              this_move_chord_titles.each do |description|
                 move_points += description[:chord_points]
               end
               array_of_legal_moves <<
                 { slot_num: slot_num, low_x: low_x, low_y: low_y,
                   high_x: high_x, high_y: high_y, move_points: move_points,
-                  array_of_all_legal_chord_descriptions: array_of_all_legal_chord_descriptions }
+                  this_move_chord_titles: this_move_chord_titles }
               return array_of_legal_moves if array_of_legal_moves.count == num_moves
             end
             flipDyadmino(slot_num)
@@ -233,10 +233,10 @@ class TilesState
     # first checks if physical placement of dyadmino is legal,
     # then checks whether all possible sonorities made are legal
     return false if !thisMoveLegalPhysically?(low_x, low_y, high_x, high_y)
-    musically_legal, array_of_all_legal_chord_descriptions =
+    musically_legal, this_move_chord_titles =
       thisMoveLegalMusically?(slot_num, low_x, low_y, high_x, high_y)
     if musically_legal
-      return true, array_of_all_legal_chord_descriptions
+      return true, this_move_chord_titles
     else
       print printMessage(:no_legal_chord, nil) unless @testing > 0
       return false
@@ -244,10 +244,10 @@ class TilesState
   end
 
   def commitMove(slot_num, low_x, low_y, high_x, high_y, move_points,
-    array_of_all_legal_chord_descriptions)
+    this_move_chord_titles)
     # method to be called by either player or machine
     # once move is deemed legal, permanently changes state of pile, rack, and board
-    move_points, messages = addPointsAndPrintChords(array_of_all_legal_chord_descriptions)
+    move_points, messages = addPointsAndPrintChords(this_move_chord_titles)
     ontoBoard(@rack_slots[slot_num][:pcs], low_x, low_y, high_x, high_y)
     intoRack(slot_num)
     @score += move_points
@@ -259,11 +259,11 @@ class TilesState
     end
   end
 
-  def addPointsAndPrintChords(array_of_all_legal_chord_descriptions)
+  def addPointsAndPrintChords(this_move_chord_titles)
     # ensures no sonority in the array is illegal before printing legal messages
     move_points = 0
     messages = Array.new
-    array_of_all_legal_chord_descriptions.each do |chord|
+    this_move_chord_titles.each do |chord|
       move_points += chord[:chord_points]
       messages << printMessage(:legal_chord, "#{chord[:chord_points]} points "\
       "for [#{chord[:sonority]}], or #{chord[:chord_name]}.") if @testing < 2
@@ -433,12 +433,12 @@ class TilesState
       print printMessage(this_sonority, nil) unless @testing > 0
       return false
     else
-      array_of_all_legal_chord_descriptions = Array.new
+      this_move_chord_titles = Array.new
       this_sonority.each do |son|
         whether_legal_chord, chord_root_and_type, chord_points = checkLegalChord(son)
         if son.length >= 3 && whether_legal_chord
           legal_move = true
-          array_of_all_legal_chord_descriptions <<
+          this_move_chord_titles <<
             { sonority: son, chord_name: chord_root_and_type, chord_points: chord_points }
         elsif son.length == 3 && checkLegalIncomplete(son)
         elsif son.length < 3 # dyad, no action or message
@@ -448,7 +448,7 @@ class TilesState
         end
       end
     end
-    return true, array_of_all_legal_chord_descriptions if legal_move
+    return true, this_move_chord_titles if legal_move
   end
 
   def checkLegalIncomplete(sonority)

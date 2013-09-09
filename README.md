@@ -6,15 +6,22 @@ This is a musical tile game that I'm working on just for fun. Basically, it's li
 The game logic
 --------------
 
-*Requires Highline gem. Run begin_game.rb in console. For now, only rules 0 through 4 work correctly. You can just keep hitting 'm' to make a random legal move.*
+*Requires Highline gem. Run begin_game.rb in console. For now, only rules 0 through 4 work correctly. If you're not familiar with duodecimal music notation, you can just keep hitting 'm' to have the computer play a legal move.*
 
 This app will provide the game logic. Each dyadmino is like a domino with a different musical note on each face. This app generates the pile, then keeps track of which dyadminos are on the player's rack, on the gameboard, or still in the pile. The player may flip or swap the dyadminos on her rack, replace one for another in the pile, or else place one on the gameboard. The app will determine whether her move is legal. She is free to form complete chords which score points, or incomplete chords which score no points. She cannot place one dyadmino over one already on the board or repeat a note in the same row.
 
-Further coding to do:
-* calculate score of chords played
-* allow legal movement of any dyadmino already on board
-* turn into hexagonal board
-* allow for two players
+For more information, here are the [complete game rules](http://bobtailyearlings.com/docs/Dyadminoes_rules_080712.pdf).
+
+Short-term coding to do:
+
+* create automated tests to fine-tune various game parameters
+* allow for legal movement of any dyadmino already placed on board
+* allow two-player games, against either the computer or another user
+* redo rules 5 and 6 (octatonic scale, and hexatonic and whole-tone scales, respectively)
+
+Long-term coding to do:
+
+* use RubyMotion and Game Center for Developers to create iOS app
 
 The interface
 -------------
