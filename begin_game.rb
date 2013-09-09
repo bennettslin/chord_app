@@ -17,7 +17,7 @@ loop do
     break
   elsif ask_slot[0] == "m"
     game_tiles.testing(1)
-    print "There is no legal move to be made.\n" if !game_tiles.playRandomLegalChord
+    print "There is no legal move to be made.\n" if !game_tiles.pickBestOfNLegalMoves(100)
     game_tiles.testing(0)
   elsif
     slot_num = ask_slot[0].to_i
@@ -32,7 +32,7 @@ loop do
         ask_top_y = ask("y-coordinate of top pc:")
         ask_board_orient = ask("orientation (0 through 5):")
         game_tiles.playDyadmino(slot_num, ask_top_x.to_i(36), ask_top_y.to_i(36), ask_board_orient.to_i)
-        # game program ALWAYS orients each dyadmino based on lower and higher pcs
+        # game program ALWAYS orients each dyadmino based on low and high pcs
         # however, player's understanding of orientation is based on top and bottom pcs
       else
         slot_swap = ask_action[0].to_i
