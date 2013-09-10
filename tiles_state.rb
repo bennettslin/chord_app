@@ -20,10 +20,11 @@ class TilesState
     @board_spaces = Array.new # assigns board dyadminoes to board spaces for game logic
     @rack_slots = Array.new # assigns rack dyadminoes to rack slots
     @filled_board_spaces = Array.new # keeps track of which board slots are filled
-    # y-axis value is the first argument, x-axis value is the second
+    # y-axis value is the first array; within that, x-axis value is the second array;
+    # within that, array where first value is either :empty or single pc, second value is dyadmino pcs
     @board_size.times do # creates array of arrays of :empty symbol
       temp_array = Array.new
-      @board_size.times { temp_array << :empty }
+      @board_size.times { temp_array << [:empty] }
       @filled_board_spaces << temp_array
     end
     @score = 0
@@ -34,36 +35,359 @@ class TilesState
     initialBoard
   end
 
-  def createLegalChords
-    if @rule < 5 # only the tonal rules have ic prime forms and incomplete sevenths
-      @tonal_chord_names = ["minor triad", "major triad", "half-diminished seventh", "minor seventh",
-          "dominant seventh", "diminished triad", "augmented triad", "fully diminished seventh",
-          "minor-major seventh", "major seventh", "augmented major seventh",
-          "Italian sixth", "French sixth"]
-      @superset_chords = %w(345 354 2334 2343 2433 336 444 3333 1344 1434 1443 246 2424)
-      @superset_incompletes = %w(264 237 336 273 246 174 138 147 183)
-      case @rule
-        when 0; @legal_chords = @superset_chords[0, 5]
-        when 1, 2; @legal_chords = @superset_chords[0, 8]
-        when 3, 4; @legal_chords = @superset_chords[0, 11]
-      else
-      end
-      [11, 12].each { |i| @legal_chords.push(@superset_chords[i]) } if [2, 4].include?(@rule)
-      # These are the two augmented sixths legal under classical rules
-      if @rule < 3
-        @legal_incompletes = @superset_incompletes[0, 5]
-        # only the first five incompletes are legal under folk and rock rules;
-        # the rest contain semitones
-      else
-        @legal_incompletes = @superset_incompletes
-      end
-    # for DEV: CHANGE octatonic and hexatonic rules, these should be PC SETS
-    elsif @rule == 5 # octatonic membership
-      # @legal_chords = [129, 138, 156, 237, 246, 336, 345, 1218, 1236, 1245, 1326, 1335, 1515,
-      #   1272, 1263, 2334, 2424, 1353, 2343, 3333]
-    elsif @rule == 6 # hexatonic and whole-tone
-      # @legal_chords = [138, 147, 228, 246, 345, 444, 1317, 1344, 1434, 2226, 2244, 2424, 1353]
+# CONTROLLERS
+
+  def playDyadmino(slot_num, top_x, top_y, board_orient)
+  # converts to board orientation, checks if legal move, and if so commits it
+    low_x, low_y, high_x, high_y =
+      orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
+    # this_move_siffr is an array
+    # siffr is just an acronym for each chord's sonority, icp_form, and fake_root
+    move_legal, this_move_siffr =
+      checkMove(slot_num, low_x, low_y, high_x, high_y)
+    if move_legal
+      commitMove(slot_num, low_x, low_y, high_x, high_y, this_move_siffr)
     end
+  end
+
+  def playBestOfNLegalMoves(num_moves)
+    best_points = 0
+    array_of_legal_moves = pickNRandomLegalMoves(num_moves)
+    return false if array_of_legal_moves.count == 0
+    index_of_max_points = max_points = 0
+    array_of_legal_moves.count.times do |this_move|
+      index_of_max_points =
+        this_move if max_points <= array_of_legal_moves[this_move][:move_points]
+      max_points = [max_points, array_of_legal_moves[this_move][:move_points]].max
+    end
+    best_move = array_of_legal_moves[index_of_max_points]
+    commitMove(best_move[:slot_num], best_move[:low_x], best_move[:low_y],
+      best_move[:high_x], best_move[:high_y], best_move[:move_points],
+      best_move[:this_move_siffr])
+    return true
+  end
+
+  def pickNRandomLegalMoves(num_moves)
+    # finds given number of random legal moves, or else just the total possible
+    # now only for dev testing purposes, but to be used later by AI opponent
+    # brute force approach
+    array_of_legal_moves = Array.new # (collects legal moves)
+    shuffled_rack_slot_nums = [*0..(@rack_slots.count - 1)].shuffle
+    shuffled_board_orients = [*0..5].shuffle
+    shuffled_empty_neighbor_spaces = returnEmptyNeighborSpaces.shuffle
+    shuffled_empty_neighbor_spaces.each do |coord|
+      x, y = coord[0], coord[1]
+      shuffled_board_orients.each do |board_orient| # determines which orientations are legal
+        shuffled_rack_slot_nums.each do |slot_num|
+          @rack_slots[slot_num][:orient] = rand(2)
+          2.times do
+            @test_counter += 1
+            low_x, low_y, high_x, high_y =
+              orientToBoard(x, y, @rack_slots[slot_num][:orient], board_orient)
+            move_legal, this_move_siffr =
+              checkMove(slot_num, low_x, low_y, high_x, high_y)
+            if move_legal
+              move_points = 0
+              this_move_siffr.each do |this_chord|
+                move_points += calculateChordPoints(this_chord[:icp_form])
+              end
+              array_of_legal_moves <<
+                { slot_num: slot_num, low_x: low_x, low_y: low_y,
+                  high_x: high_x, high_y: high_y, move_points: move_points,
+                  this_move_siffr: this_move_siffr }
+              return array_of_legal_moves if array_of_legal_moves.count == num_moves
+            end
+            flipDyadmino(slot_num)
+          end
+        end
+      end
+    end
+    return array_of_legal_moves
+  end
+
+  def checkMove(slot_num, low_x, low_y, high_x, high_y)
+    # method to be called by either player or machine
+    # first checks if physical placement of dyadmino is legal,
+    # then checks whether all possible sonorities made are legal
+    return false if !thisMoveLegalPhysically?(low_x, low_y, high_x, high_y)
+    musically_legal, this_move_siffr =
+      thisMoveLegalMusically?(slot_num, low_x, low_y, high_x, high_y)
+    if musically_legal
+      return true, this_move_siffr
+    else
+      print printMessage(:no_legal_chord, nil) unless @testing > 0
+      return false
+    end
+  end
+
+  def commitMove(slot_num, low_x, low_y, high_x, high_y, move_points, this_move_siffr)
+    # method to be called by either player or machine
+    # once move is deemed legal, permanently changes state of pile, rack, and board
+    move_points, messages = addPointsAndReturnChordNames(this_move_siffr)
+    ontoBoard(@rack_slots[slot_num][:pcs], low_x, low_y, high_x, high_y)
+    intoRack(slot_num)
+    @score += move_points
+    @turn += 1
+    messages.each { |this_message| print this_message } if @testing < 2
+    if @testing > 0
+      print printMessage(:test_counter, nil)
+      @test_counter = 0
+    end
+  end
+
+# MUSICAL LOGIC
+
+  def thisMoveLegalMusically?(slot_num, low_x, low_y, high_x, high_y)
+    # finds all sonorities made by this move; if none are illegal
+    # and at least ONE legal chord is made, returns all legal chords made by this move,
+    # along with raw chord descriptions (sonority, icp_form, and fake_root)
+    legal_move = false # illegal until proven otherwise
+    array_of_sonorities = Array.new
+    low_pc, high_pc = @rack_slots[slot_num][:pcs][0], @rack_slots[slot_num][:pcs][1]
+    array_of_sonorities =
+      scanSurroundingSpaces(low_pc, low_x, low_y, high_pc, high_x, high_y)
+    if array_of_sonorities.class == Symbol # this means it's an error, not an array
+      print printMessage(array_of_sonorities, nil) unless @testing > 0
+      return false
+    else
+      this_move_siffr = Array.new
+      # siffr is just an acronym for each chord's sonority, icp_form, and fake_root
+      array_of_sonorities.each do |son|
+        whether_legal_chord, icp_form, fake_root = checkLegalChord(son)
+        if son.length >= 3 && whether_legal_chord
+          legal_move = true
+          this_move_siffr <<
+            { sonority: son, icp_form: icp_form, fake_root: fake_root }
+        elsif son.length == 3 && checkLegalIncomplete(son)
+        elsif son.length < 3 # dyad, no action or message
+        else
+          print printMessage(:illegal_sonority, son) unless @testing > 0
+          return false
+        end
+      end
+    end
+    return true, this_move_siffr if legal_move
+  end
+
+  def checkLegalIncomplete(sonority)
+    # returns true if this is a legal incomplete seventh under the given rules
+    icp_form, fake_root = getICPrimeForm(sonority)
+    whether_legal_incomplete = thisSonorityLegal?(icp_form, @legal_incompletes)
+    return whether_legal_incomplete
+  end
+
+  def checkLegalChord(sonority)
+    # returns value of true, and icp_form and fake root
+    # if this is a legal chord under the given rules
+    icp_form, fake_root = getICPrimeForm(sonority)
+    whether_legal_chord = thisSonorityLegal?(icp_form, @legal_chords)
+    return whether_legal_chord, icp_form, fake_root
+  end
+
+  def thisSonorityLegal?(icp_form, array_of_sonorities)
+    # only returns whether this sonority is legal,
+    # NOT whether it will score points and thus count as a legal move on its own
+    array_of_sonorities.include?(icp_form)
+  end
+
+  def calculateChordPoints(icp_form)
+    # returns how many points an icp_form is worth (legality is assumed)
+    if @rule < 5 # for DEV: will eventually include post-tonal rules
+      superset_points = [2, 2, 3, 3, 3, 2, 3, 4, 3, 3, 3, 2, 4]
+      return superset_points[@superset_chords.index(icp_form)]
+    end
+  end
+
+  def getICPrimeForm(sonority) # puts sonority in ic prime form (not pc prime form!)
+    # this method won't necessarily work for sonorities of more than four pcs,
+    # but for our purposes it's fine since four pcs is the maximum for this game.
+    icp_form = String.new
+    fake_root = 0 # not always the musical root, just used to id unique chord
+    card = sonority.length
+    pcn_form, icn_form, icn_sonorities, icp_sonorities = Array.new(4) { [] }
+
+    sonority.split("").each do |i| # puts in pc normal form
+      pcn_form << i.to_i(12) # converts from duodecimal string
+    end
+    pcn_form.sort! # puts pcs in arbitrary sequential order
+
+    # converts pc normal form to ic normal form
+    card.times do |i| # puts in ic normal form
+      icn_form[i] = (pcn_form[(i + 1) % card] - pcn_form[i]) % 12
+    end
+
+    # converts ic normal form to ic prime form, and gives the more compact
+    # ic prime form if there are post-tonal
+    icn_sonorities[0] = icn_form
+    icn_sonorities[1] = icn_form.reverse if @rule.between?(5, 6)
+    icn_sonorities.count.times do |i|
+      this_sonority = icn_sonorities[i]
+      smallest_ics_index =
+        this_sonority.each_index.select{ |j| this_sonority[j] == this_sonority.min }
+        # selects however many index values there are of the smallest ic
+      temp_max = first_ic_index = 0 # just declaring variables
+      smallest_ics_index.each do |ic|
+        temp_gap = this_sonority[(ic - 1) % card]
+        if temp_gap > temp_max
+          temp_max = temp_gap
+          first_ic_index = ic
+        end
+      end
+
+      fake_root = pcn_form[first_ic_index] unless @rule.between?(5, 6)
+      temp_icp_form = ""
+      card.times do |k| # puts in ic prime form
+        temp_icp_form << this_sonority[(first_ic_index + k) % card].to_s(12) # rotates lineup
+      end
+      icp_sonorities[i] = temp_icp_form
+    end
+
+    @rule.between?(5, 6) ? icp_form =
+      [icp_sonorities[0], icp_sonorities[1]].min : icp_form = icp_sonorities[0]
+    # print "The interval-class prime form of [#{sonority}] is (#{icp_form}).\n"
+    return icp_form, fake_root
+  end
+
+# BOARD LOGIC
+
+  def orientToBoard(top_x, top_y, rack_orient, board_orient)
+    # converts rack orientation parameters to board coordinates
+    bottom_x, bottom_y = top_x, top_y # temporarily makes bottom pc coords same as top
+    x_deviate = y_deviate = 0 # how bottom coordinates deviate from top
+    case board_orient # coords for two pcs will be off by one in one axis
+      when 0; x_deviate = 1
+      when 1; x_deviate, y_deviate = 1, -1
+      when 2; y_deviate = -1
+      when 3; x_deviate = -1
+      when 4; x_deviate, y_deviate = -1, 1
+      when 5; y_deviate = 1
+    end
+    bottom_x = (top_x + x_deviate) % @board_size
+    bottom_y = (top_y + y_deviate) % @board_size
+    # player's understanding of dyadmino orient is based on placement on rack;
+    # this assigns board coord based on lower and higher pcs instead
+    if rack_orient == 0
+      low_x, low_y, high_x, high_y = top_x, top_y, bottom_x, bottom_y
+    else
+      low_x, low_y, high_x, high_y = bottom_x, bottom_y, top_x, top_y
+    end
+    return low_x, low_y, high_x, high_y
+  end
+
+  def thisMoveLegalPhysically?(low_x, low_y, high_x, high_y)
+    # checks that dyadmino ISN'T placed over, but IS placed next to, another one
+    if isOccupiedSpace?(low_x, low_y) || isOccupiedSpace?(high_x, high_y)
+      print printMessage(:illegal_occupied_space, nil) unless @testing > 0
+      return false
+    elsif isIslandSpace?(low_x, low_y) && isIslandSpace?(high_x, high_y)
+      print printMessage(:illegal_island, nil) unless @testing > 0
+      return false
+    else
+      return true
+    end
+  end
+
+  def isOccupiedSpace?(x, y)
+    @filled_board_spaces[y][x][0] != :empty
+  end
+
+  def isIslandSpace?(x, y)
+    # determines that a given empty space is NOT next to a filled one on the board
+    [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
+      temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
+      if @filled_board_spaces[temp_y][temp_x][0] != :empty
+        return false
+      else
+      end
+    end
+    return true
+  end
+
+  def scanSurroundingSpaces(low_pc, low_x, low_y, high_pc, high_x, high_y)
+    # to be refactored?
+    # returns EVERY sonority a dyad or larger that is formed by the given dyadmino placement
+    # UNLESS it finds: repeated pcs, more than the maximum allowed in a row,
+    # and semitones under folk or rock rules (this should be its own method)
+    case @rule
+      when (0..4) ; max_card = 4
+      when 5; max_card = 8
+      when 6; max_card = 6
+    end
+    array_of_sonorities = Array.new
+    pcs_to_check = [{ pc: low_pc, x: low_x, y: low_y },
+      { pc: high_pc, x: high_x, y: high_y }]
+    directions_to_check = [:eastwest, :se_to_nw, :sw_to_ne]
+    if low_y == high_y # ensures that same direction of dyadmino orientation isn't checked twice
+      parallel_axis = directions_to_check[0]
+    elsif low_x == high_x
+      parallel_axis = directions_to_check[1]
+    else
+      parallel_axis = directions_to_check[2]
+    end
+    pcs_to_check.each do |origin|
+      directions_to_check.each do |dir|
+        temp_sonority = [origin[:pc]]
+        unless origin[:pc] == high_pc && parallel_axis == dir
+          [-1, 1].each do |vector| # checks in both directions
+            temp_pc, temp_x, temp_y = String.new, origin[:x], origin[:y]
+            while temp_pc != :empty
+              # establishes that the pc in the temporary container is NOT the empty slot
+              # where the dyadmino might go
+              case dir
+                when :se_to_nw; temp_y = (temp_y + vector) % @board_size
+                when :eastwest; temp_x = (temp_x + vector) % @board_size
+                when :sw_to_ne; temp_x, temp_y = (temp_x + vector) % @board_size,
+                  (temp_y - vector) % @board_size
+              end
+
+              if temp_x == low_x && temp_y == low_y
+                temp_pc = low_pc
+              elsif temp_x == high_x && temp_y == high_y
+                temp_pc = high_pc
+              else
+                temp_pc = @filled_board_spaces[temp_y][temp_x][0]
+              end
+
+              if temp_sonority.count > max_card
+                return :illegal_maxed_out_row
+              elsif temp_pc != :empty && temp_sonority.include?(temp_pc)
+                return :illegal_repeated_pcs
+              elsif @rule < 3 # ensures there are no semitones when playing by folk and rock rules
+                [-1, 1].each do |j|
+                  if temp_pc != :empty && temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12))
+                    return :illegal_semitones
+                  end
+                end
+              end
+
+              if temp_pc != :empty
+                vector == -1 ? temp_sonority.unshift(temp_pc) : temp_sonority.push(temp_pc)
+              end
+            end
+          end
+        end
+        array_of_sonorities << temp_sonority.sort!.join if temp_sonority.count > 1
+      end
+    end
+    return array_of_sonorities
+  end
+
+  def returnEmptyNeighborSpaces
+    # scans board and returns an array of EVERY empty space that has a filled neighbor
+    array_of_empty_neighbor_spaces = Array.new
+    @filled_board_spaces.each_index do |y|
+      @filled_board_spaces[y].each_index do |x|
+        if @filled_board_spaces[y][x][0] != :empty # this is the filled space
+          [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
+            temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
+            if @filled_board_spaces[temp_y][temp_x][0] == :empty
+              array_of_empty_neighbor_spaces << [temp_x, temp_y]
+            end
+          end
+        end
+      end
+    end
+    return array_of_empty_neighbor_spaces.uniq!
   end
 
 # PILE STATE CHANGES
@@ -154,406 +478,13 @@ class TilesState
 
   def ontoBoard(pcs, low_x, low_y, high_x, high_y)
     # places dyadmino on board and records state
-    @filled_board_spaces[low_y][low_x] = pcs[0]
-    @filled_board_spaces[high_y][high_x] = pcs[1]
+    @filled_board_spaces[low_y][low_x] = [pcs[0], pcs]
+    @filled_board_spaces[high_y][high_x] = [pcs[1], pcs]
     @board_spaces << { pcs: pcs, low_x: low_x, low_y: low_y,
       high_x: high_x, high_y: high_y }
   end
 
-# CONTROLLERS
-
-  def playDyadmino(slot_num, top_x, top_y, board_orient)
-  # converts to board orientation, checks if legal move, and if so commits it
-    low_x, low_y, high_x, high_y =
-      orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
-    move_legal, this_move_chord_titles =
-      checkMove(slot_num, low_x, low_y, high_x, high_y)
-    if move_legal
-      commitMove(slot_num, low_x, low_y, high_x, high_y, this_move_chord_titles)
-    end
-  end
-
-  def pickBestOfNLegalMoves(num_moves)
-    best_points = 0
-    array_of_legal_moves = pickNRandomLegalMoves(num_moves)
-    return false if array_of_legal_moves.count == 0
-    index_of_max_points = max_points = 0
-    array_of_legal_moves.count.times do |this_move|
-      index_of_max_points =
-        this_move if max_points <= array_of_legal_moves[this_move][:move_points]
-      max_points = [max_points, array_of_legal_moves[this_move][:move_points]].max
-    end
-    best_move = array_of_legal_moves[index_of_max_points]
-    commitMove(best_move[:slot_num], best_move[:low_x], best_move[:low_y],
-      best_move[:high_x], best_move[:high_y], best_move[:move_points],
-      best_move[:this_move_chord_titles])
-    return true
-  end
-
-  def pickNRandomLegalMoves(num_moves)
-    # finds given number of random legal moves, or else just the total possible
-    # now only for dev testing purposes, but to be used later by AI opponent
-    # brute force approach
-    array_of_legal_moves = Array.new # (collects legal moves)
-    shuffled_rack_slot_nums = [*0..(@rack_slots.count - 1)].shuffle
-    shuffled_board_orients = [*0..5].shuffle
-    shuffled_empty_neighbor_spaces = returnEmptyNeighborSpaces.shuffle
-    shuffled_empty_neighbor_spaces.each do |coord|
-      x, y = coord[0], coord[1]
-      shuffled_board_orients.each do |board_orient| # determines which orientations are legal
-        shuffled_rack_slot_nums.each do |slot_num|
-          @rack_slots[slot_num][:orient] = rand(2)
-          2.times do
-            @test_counter += 1
-            low_x, low_y, high_x, high_y =
-              orientToBoard(x, y, @rack_slots[slot_num][:orient], board_orient)
-            move_legal, this_move_chord_titles =
-              checkMove(slot_num, low_x, low_y, high_x, high_y)
-            if move_legal
-              move_points = 0
-              this_move_chord_titles.each do |description|
-                move_points += description[:chord_points]
-              end
-              array_of_legal_moves <<
-                { slot_num: slot_num, low_x: low_x, low_y: low_y,
-                  high_x: high_x, high_y: high_y, move_points: move_points,
-                  this_move_chord_titles: this_move_chord_titles }
-              return array_of_legal_moves if array_of_legal_moves.count == num_moves
-            end
-            flipDyadmino(slot_num)
-          end
-        end
-      end
-    end
-    return array_of_legal_moves
-  end
-
-  def checkMove(slot_num, low_x, low_y, high_x, high_y)
-    # method to be called by either player or machine
-    # first checks if physical placement of dyadmino is legal,
-    # then checks whether all possible sonorities made are legal
-    return false if !thisMoveLegalPhysically?(low_x, low_y, high_x, high_y)
-    musically_legal, this_move_chord_titles =
-      thisMoveLegalMusically?(slot_num, low_x, low_y, high_x, high_y)
-    if musically_legal
-      return true, this_move_chord_titles
-    else
-      print printMessage(:no_legal_chord, nil) unless @testing > 0
-      return false
-    end
-  end
-
-  def commitMove(slot_num, low_x, low_y, high_x, high_y, move_points,
-    this_move_chord_titles)
-    # method to be called by either player or machine
-    # once move is deemed legal, permanently changes state of pile, rack, and board
-    move_points, messages = addPointsAndPrintChords(this_move_chord_titles)
-    ontoBoard(@rack_slots[slot_num][:pcs], low_x, low_y, high_x, high_y)
-    intoRack(slot_num)
-    @score += move_points
-    @turn += 1
-    messages.each { |this_message| print this_message }
-    if @testing > 0
-      print printMessage(:test_counter, nil)
-      @test_counter = 0
-    end
-  end
-
-  def addPointsAndPrintChords(this_move_chord_titles)
-    # ensures no sonority in the array is illegal before printing legal messages
-    move_points = 0
-    messages = Array.new
-    this_move_chord_titles.each do |chord|
-      move_points += chord[:chord_points]
-      messages << printMessage(:legal_chord, "#{chord[:chord_points]} points "\
-      "for [#{chord[:sonority]}], or #{chord[:chord_name]}.") if @testing < 2
-    end
-    return move_points, messages
-  end
-
-  def testing(value) # makes this instance a testing environment
-    # 0 is regular play, 1 is human testing, 2 is machine testing
-    @testing = value
-  end
-
-# BOARD LOGIC
-
-  def orientToBoard(top_x, top_y, rack_orient, board_orient)
-    # converts rack orientation parameters to board coordinates
-    bottom_x, bottom_y = top_x, top_y # temporarily makes bottom pc coords same as top
-    x_deviate = y_deviate = 0 # how bottom coordinates deviate from top
-    case board_orient # coords for two pcs will be off by one in one axis
-      when 0; x_deviate = 1
-      when 1; x_deviate, y_deviate = 1, -1
-      when 2; y_deviate = - 1
-      when 3; x_deviate = -1
-      when 4; x_deviate, y_deviate = -1, 1
-      when 5; y_deviate = 1
-    end
-    bottom_x = (top_x + x_deviate) % @board_size
-    bottom_y = (top_y + y_deviate) % @board_size
-    # player's understanding of dyadmino orient is based on placement on rack;
-    # this assigns board coord based on lower and higher pcs instead
-    if rack_orient == 0
-      low_x, low_y, high_x, high_y = top_x, top_y, bottom_x, bottom_y
-    else
-      low_x, low_y, high_x, high_y = bottom_x, bottom_y, top_x, top_y
-    end
-    return low_x, low_y, high_x, high_y
-  end
-
-  def thisMoveLegalPhysically?(low_x, low_y, high_x, high_y)
-    # checks that dyadmino ISN'T placed over, but IS placed next to, another one
-    if isOccupiedSpace?(low_x, low_y) || isOccupiedSpace?(high_x, high_y)
-      print printMessage(:illegal_occupied_space, nil) unless @testing > 0
-      return false
-    elsif isIslandSpace?(low_x, low_y) && isIslandSpace?(high_x, high_y)
-      print printMessage(:illegal_island, nil) unless @testing > 0
-      return false
-    else
-      return true
-    end
-  end
-
-  def isOccupiedSpace?(x, y)
-    @filled_board_spaces[y][x] != :empty
-  end
-
-  def isIslandSpace?(x, y)
-    # determines that a given empty space is NOT next to a filled one on the board
-    [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
-      temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
-      if @filled_board_spaces[temp_y][temp_x] != :empty
-        return false
-      else
-      end
-    end
-    return true
-  end
-
-  def scanSurroundingSpaces(low_pc, low_x, low_y, high_pc, high_x, high_y)
-    # to be refactored?
-    # returns EVERY sonority a dyad or larger that is formed by the given dyadmino placement
-    # UNLESS it finds: repeated pcs, more than the maximum allowed in a row,
-    # and semitones under folk or rock rules (this should be its own method)
-    case @rule
-      when (0..4) ; max_card = 4
-      when 5; max_card = 8
-      when 6; max_card = 6
-    end
-    array_of_sonorities = Array.new
-    pcs_to_check = [{ pc: low_pc, x: low_x, y: low_y },
-      { pc: high_pc, x: high_x, y: high_y }]
-    directions_to_check = [:eastwest, :se_to_nw, :sw_to_ne]
-    if low_y == high_y # ensures that same direction of dyadmino orientation isn't checked twice
-      parallel_axis = directions_to_check[0]
-    elsif low_x == high_x
-      parallel_axis = directions_to_check[1]
-    else
-      parallel_axis = directions_to_check[2]
-    end
-    pcs_to_check.each do |origin|
-      directions_to_check.each do |dir|
-        temp_sonority = [origin[:pc]]
-        unless origin[:pc] == high_pc && parallel_axis == dir
-          [-1, 1].each do |vector| # checks in both directions
-            temp_pc, temp_x, temp_y = String.new, origin[:x], origin[:y]
-            while temp_pc != :empty
-              # establishes that the pc in the temporary container is NOT the empty slot
-              # where the dyadmino might go
-              case dir
-                when :se_to_nw; temp_y = (temp_y + vector) % @board_size
-                when :eastwest; temp_x = (temp_x + vector) % @board_size
-                when :sw_to_ne; temp_x, temp_y = (temp_x + vector) % @board_size,
-                  (temp_y - vector) % @board_size
-              end
-
-              if temp_x == low_x && temp_y == low_y
-                temp_pc = low_pc
-              elsif temp_x == high_x && temp_y == high_y
-                temp_pc = high_pc
-              else
-                temp_pc = @filled_board_spaces[temp_y][temp_x]
-              end
-
-              if temp_sonority.count > max_card
-                return :illegal_maxed_out_row
-              elsif temp_pc != :empty && temp_sonority.include?(temp_pc)
-                return :illegal_repeated_pcs
-              elsif @rule < 3 # ensures there are no semitones when playing by folk and rock rules
-                [-1, 1].each do |j|
-                  if temp_pc != :empty && temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12))
-                    return :illegal_semitones
-                  end
-                end
-              end
-
-              if temp_pc != :empty
-                vector == -1 ? temp_sonority.unshift(temp_pc) : temp_sonority.push(temp_pc)
-              end
-            end
-          end
-        end
-        array_of_sonorities << temp_sonority.sort!.join if temp_sonority.count > 1
-      end
-    end
-    return array_of_sonorities
-  end
-
-  def returnEmptyNeighborSpaces
-    # scans board and returns an array of EVERY empty space that has a filled neighbor
-    array_of_empty_neighbor_spaces = Array.new
-    @filled_board_spaces.each_index do |y|
-      @filled_board_spaces[y].each_index do |x|
-        if @filled_board_spaces[y][x] != :empty # this is the filled space
-          [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].each do |coord|
-            temp_x, temp_y = (x + coord[0]) % @board_size, (y + coord[1]) % @board_size
-            if @filled_board_spaces[temp_y][temp_x] == :empty
-              array_of_empty_neighbor_spaces << [temp_x, temp_y]
-            end
-          end
-        end
-      end
-    end
-    return array_of_empty_neighbor_spaces.uniq!
-  end
-
-# MUSICAL LOGIC
-
-  def thisMoveLegalMusically?(slot_num, low_x, low_y, high_x, high_y)
-    # finds all sonorities made by this move; if none are illegal
-    # and at least ONE legal chord is made, returns all legal chords made by this move
-    move_points = 0
-    legal_move = false # illegal until proven otherwise
-    this_sonority = Array.new
-    low_pc, high_pc = @rack_slots[slot_num][:pcs][0], @rack_slots[slot_num][:pcs][1]
-    this_sonority =
-      scanSurroundingSpaces(low_pc, low_x, low_y, high_pc, high_x, high_y)
-    if this_sonority.class == Symbol # this means it's an error
-      print printMessage(this_sonority, nil) unless @testing > 0
-      return false
-    else
-      this_move_chord_titles = Array.new
-      this_sonority.each do |son|
-        whether_legal_chord, chord_root_and_type, chord_points = checkLegalChord(son)
-        if son.length >= 3 && whether_legal_chord
-          legal_move = true
-          this_move_chord_titles <<
-            { sonority: son, chord_name: chord_root_and_type, chord_points: chord_points }
-        elsif son.length == 3 && checkLegalIncomplete(son)
-        elsif son.length < 3 # dyad, no action or message
-        else
-          print printMessage(:illegal_sonority, son) unless @testing > 0
-          return false
-        end
-      end
-    end
-    return true, this_move_chord_titles if legal_move
-  end
-
-  def checkLegalIncomplete(sonority)
-    # returns true if this is a legal incomplete seventh under the given rules
-    icp_form, fake_root = getICPrimeForm(sonority)
-    whether_legal_incomplete = thisSonorityLegal?(icp_form, @legal_incompletes)
-    return whether_legal_incomplete
-  end
-
-  def checkLegalChord(sonority)
-    # returns true value, chord name, and chord points
-    # if this is a legal chord under the given rules
-    chord_root_and_type = chord_points = nil
-    icp_form, fake_root = getICPrimeForm(sonority)
-    whether_legal_chord = thisSonorityLegal?(icp_form, @legal_chords)
-    if whether_legal_chord
-      real_root, chord_type = getRootAndType(icp_form, fake_root)
-      chord_root_and_type = [real_root, chord_type].join("-")
-      chord_points = calculateChordPoints(icp_form)
-    end
-    return whether_legal_chord, chord_root_and_type, chord_points
-  end
-
-  def calculateChordPoints(icp_form)
-    # returns how many points an icp_form is worth (legality is assumed)
-    if @rule < 5 # for DEV: will eventually include post-tonal rules
-      superset_points = [2, 2, 3, 3, 3, 2, 3, 4, 3, 3, 3, 2, 4]
-      return superset_points[@superset_chords.index(icp_form)]
-    end
-  end
-
-  def thisSonorityLegal?(icp_form, array_of_sonorities)
-    # only returns whether this sonority is legal,
-    # NOT whether it will score points and thus count as a legal move on its own
-    array_of_sonorities.include?(icp_form)
-  end
-
-  def getICPrimeForm(sonority) # puts sonority in ic prime form (not pc prime form!)
-    # this method won't necessarily work for sonorities of more than four pcs,
-    # but for our purposes it's fine since four pcs is the maximum for this game.
-    icp_form = String.new
-    fake_root = 0 # not always the musical root, just used to id unique chord
-    card = sonority.length
-    pcn_form, icn_form, icn_sonorities, icp_sonorities = Array.new(4) { [] }
-
-    sonority.split("").each do |i| # puts in pc normal form
-      pcn_form << i.to_i(12) # converts from duodecimal string
-    end
-    pcn_form.sort! # puts pcs in arbitrary sequential order
-
-    # converts pc normal form to ic normal form
-    card.times do |i| # puts in ic normal form
-      icn_form[i] = (pcn_form[(i + 1) % card] - pcn_form[i]) % 12
-    end
-
-    # converts ic normal form to ic prime form, and gives the more compact
-    # ic prime form if there are post-tonal
-    icn_sonorities[0] = icn_form
-    icn_sonorities[1] = icn_form.reverse if @rule.between?(5, 6)
-    icn_sonorities.count.times do |i|
-      this_sonority = icn_sonorities[i]
-      smallest_ics_index =
-        this_sonority.each_index.select{ |j| this_sonority[j] == this_sonority.min }
-        # selects however many index values there are of the smallest ic
-      temp_max = first_ic_index = 0 # just declaring variables
-      smallest_ics_index.each do |ic|
-        temp_gap = this_sonority[(ic - 1) % card]
-        if temp_gap > temp_max
-          temp_max = temp_gap
-          first_ic_index = ic
-        end
-      end
-
-      fake_root = pcn_form[first_ic_index] unless @rule.between?(5, 6)
-      temp_icp_form = ""
-      card.times do |k| # puts in ic prime form
-        temp_icp_form << this_sonority[(first_ic_index + k) % card].to_s(12) # rotates lineup
-      end
-      icp_sonorities[i] = temp_icp_form
-    end
-
-    @rule.between?(5, 6) ? icp_form =
-      [icp_sonorities[0], icp_sonorities[1]].min : icp_form = icp_sonorities[0]
-    # print "The interval-class prime form of [#{sonority}] is (#{icp_form}).\n"
-    return icp_form, fake_root
-  end
-
-  def getRootAndType(icp_form, fake_root) # returns string for real root
-    real_root = String.new
-    # refactor? same array as superset of tonal ics in method to create array of all legal chords
-    t_adjust_root = [0, 8, 2, 2, 2, 0, 0, 0, 1, 1, 1, 2, 2] # adds to fake root to find correct root
-    # for each symmetric chord, first value is ics, second value is mod number
-    t_symmetric = [[444, 3333, 2424], [4, 3, 6]]
-    t_index = @superset_chords.index(icp_form)
-    sym_index = t_symmetric[0].index(@superset_chords[t_index])
-    if sym_index != nil
-      mod = t_symmetric[1][sym_index]
-      (12 / mod).times do |i|
-        real_root << (((fake_root + t_adjust_root[t_index])% mod) + (mod * i)).to_s(12)
-      end
-    else
-      real_root = ((t_adjust_root[t_index] + fake_root) % 12).to_s(12)
-    end
-    return convertPCIntegersToLetters(real_root), @tonal_chord_names[t_index]
-  end
+# TEST HELPERS
 
   def returnRandomSonority(card) # for dev testing purposes
     # accepts a cardinal value from user or machine and returns a random sonority
@@ -595,102 +526,79 @@ class TilesState
     print printMessage(:test_counter, nil) if @testing > 1
   end
 
-# VIEWS (all of these are for the console, for now)
-
-  def userView
-    showScore
-    showPile
-    showBoard
-    showRack
+  def testing(value) # makes this instance a testing environment
+    # 0 is regular play, 1 is human testing, 2 is machine testing
+    @testing = value
   end
 
-  def showPile # shows sorted pile
-    if @pile.count >= 1
-      @pile.sort!
-      if @pile.count >= 20
-        half = (@pile.count / 2)
-        print "In the pile:\n#{@pile[(0..half)].join(" ")}\n#{@pile[((half + 1)..-1)].join(" ")}\n"
+# LOGIC HELPERS
+
+  def createLegalChords
+    if @rule < 5 # only the tonal rules have ic prime forms and incomplete sevenths
+      @tonal_chord_names = ["minor triad", "major triad", "half-diminished seventh", "minor seventh",
+          "dominant seventh", "diminished triad", "augmented triad", "fully diminished seventh",
+          "minor-major seventh", "major seventh", "augmented major seventh",
+          "Italian sixth", "French sixth"]
+      @superset_chords = %w(345 354 2334 2343 2433 336 444 3333 1344 1434 1443 246 2424)
+      @superset_incompletes = %w(264 237 336 273 246 174 138 147 183)
+      case @rule
+        when 0; @legal_chords = @superset_chords[0, 5]
+        when 1, 2; @legal_chords = @superset_chords[0, 8]
+        when 3, 4; @legal_chords = @superset_chords[0, 11]
       else
-        print "In the pile:\n#{@pile.join(" ")}\n"
       end
-    end
-  end
-
-  def showRack # shows which rack pieces are in which rack slots, and how oriented
-    print "On your rack:\n"
-    @rack_slots.count.times do |i|
-      print "#{i}  "
-    end
-    print "\n"
-    @rack_slots.count.times do |i|
-      if @rack_slots[i][:orient] == 0
-        print "#{@rack_slots[i][:pcs]} "
+      [11, 12].each { |i| @legal_chords.push(@superset_chords[i]) } if [2, 4].include?(@rule)
+      # These are the two augmented sixths legal under classical rules
+      if @rule < 3
+        @legal_incompletes = @superset_incompletes[0, 5]
+        # only the first five incompletes are legal under folk and rock rules;
+        # the rest contain semitones
       else
-        print "#{@rack_slots[i][:pcs].to_s.reverse} "
+        @legal_incompletes = @superset_incompletes
       end
+    # for DEV: CHANGE octatonic and hexatonic rules, these should be PC SETS
+    elsif @rule == 5 # octatonic membership
+      # @legal_chords = [129, 138, 156, 237, 246, 336, 345, 1218, 1236, 1245, 1326, 1335, 1515,
+      #   1272, 1263, 2334, 2424, 1353, 2343, 3333]
+    elsif @rule == 6 # hexatonic and whole-tone
+      # @legal_chords = [138, 147, 228, 246, 345, 444, 1317, 1344, 1434, 2226, 2244, 2424, 1353]
     end
-    print "\n"
   end
 
-  def showBoard # hexagonal board is really 2x2 board with extra diagonal
-    # board size > 36 will create double-digit coordinates in console;
-    # this is fine since this method is only for dev purposes
-    center_x, center_y = centerBoard
-    origin_x, origin_y =
-      center_x - (@board_size / 2), center_y - (@board_size / 2)
-    # print "Center of board is at #{center_x}, #{center_y}\n"
-    (@board_size - 1).step(0, -1) do |j|
-      print "#{" " * j}#{((j + origin_y) % @board_size).to_s(36)}|"
-      temp_array = @filled_board_spaces[(j + origin_y) % @board_size]
-      @board_size.times do |i|
-        # temp_array[i] = "t" if temp_array[i] == "a" # real post-tonal notation
-        # temp_array[i] = "e" if temp_array[i] == "b"
-        print "#{temp_array[(i + origin_x) % @board_size] == :empty ?
-          "." : temp_array[(i + origin_x) % @board_size]} "
-      end
-      case j
-        when 2; print "  |  4 5  | how hexagonal orientation works:"
-        when 1; print "   | 3 x 0 | top pc is located at x"
-        when 0; print "    |  2 1  | bottom pc is located at number"
-      end
-      print "\n"
+  def addPointsAndReturnChordNames(this_move_siffr)
+    move_points = 0
+    messages = Array.new
+    this_move_siffr.each do |chord|
+      chord_points = calculateChordPoints(chord[:icp_form])
+      move_points += chord_points
+      real_root, chord_type = getRootAndType(chord[:icp_form], chord[:fake_root])
+      chord_name = [real_root, chord_type].join("-")
+      messages << printMessage(:legal_chord, "#{chord_points} points "\
+      "for [#{chord[:sonority]}], or #{chord_name}.") if @testing < 2
     end
-    print " #{"-" * 2 * @board_size}\n"
-    @board_size.times do |i|
-      print "#{((i + origin_x) % @board_size).to_s(36)} "
-    end
-    print "\n"
+    return move_points, messages
   end
 
-  def showScore
-    print "Your score is #{@score}.\n"
+  def getRootAndType(icp_form, fake_root) # returns string for real root
+    real_root = String.new
+    # refactor? same array as superset of tonal ics in method to create array of all legal chords
+    t_adjust_root = [0, 8, 2, 2, 2, 0, 0, 0, 1, 1, 1, 2, 2] # adds to fake root to find correct root
+    # for each symmetric chord, first value is ics, second value is mod number
+    t_symmetric = [[444, 3333, 2424], [4, 3, 6]]
+    t_index = @superset_chords.index(icp_form)
+    sym_index = t_symmetric[0].index(@superset_chords[t_index])
+    if sym_index != nil
+      mod = t_symmetric[1][sym_index]
+      (12 / mod).times do |i|
+        real_root << (((fake_root + t_adjust_root[t_index])% mod) + (mod * i)).to_s(12)
+      end
+    else
+      real_root = ((t_adjust_root[t_index] + fake_root) % 12).to_s(12)
+    end
+    return convertPCIntegersToLetters(real_root), @tonal_chord_names[t_index]
   end
 
-  def centerBoard # shows center of smallest rectangle that encloses all played dyadminos
-    # only for view purposes, data is unaffected
-    # for DEV: for actual interface, improve this algorithm by weighting individual filled spaces
-    min_x = max_x = @center_x
-    min_y = max_y = @center_y
-    # refactor, obviously
-    min_y += -1 until (@filled_board_spaces[min_y % @board_size] - [:empty]).empty? ||
-      min_y % @board_size == @center_y + 1
-    max_y += 1 until (@filled_board_spaces[max_y % @board_size] - [:empty]).empty? ||
-      max_y % @board_size == @center_y - 1
-    # for DEV: I didn't know a better way to iterate across arrays within arrays
-    # as if x and y axes were switched, so this needs to be refactored
-    begin
-      temp_array = Array.new
-      min_x += -1
-      @board_size.times { |j| temp_array << @filled_board_spaces[j][min_x % @board_size] }
-    end until (temp_array - [:empty]).empty? || min_x % @board_size == @center_x + 1
-    begin
-      temp_array = Array.new
-      max_x += 1
-      @board_size.times { |j| temp_array << @filled_board_spaces[j][max_x % @board_size] }
-    end until (temp_array - [:empty]).empty? || max_x % @board_size == @center_x - 1
-    @center_x, @center_y = (max_x + min_x) / 2, (max_y + min_y) / 2
-    return @center_x, @center_y
-  end
+# VIEW HELPERS
 
   def printMessage(message, any_string)
     case message
@@ -743,4 +651,100 @@ class TilesState
     return pc_letter.join("-")
   end
 
+# VIEWS (all of these are for the console, for now)
+
+  def userView
+    showScore
+    showPile
+    showBoard
+    showRack
+  end
+
+  def showPile # shows sorted pile
+    if @pile.count >= 1
+      @pile.sort!
+      if @pile.count >= 20
+        half = (@pile.count / 2)
+        print "In the pile:\n#{@pile[(0..half)].join(" ")}\n#{@pile[((half + 1)..-1)].join(" ")}\n"
+      else
+        print "In the pile:\n#{@pile.join(" ")}\n"
+      end
+    end
+  end
+
+  def showRack # shows which rack pieces are in which rack slots, and how oriented
+    print "On your rack:\n"
+    @rack_slots.count.times do |i|
+      print "#{i}  "
+    end
+    print "\n"
+    @rack_slots.count.times do |i|
+      if @rack_slots[i][:orient] == 0
+        print "#{@rack_slots[i][:pcs]} "
+      else
+        print "#{@rack_slots[i][:pcs].to_s.reverse} "
+      end
+    end
+    print "\n"
+  end
+
+  def showBoard # hexagonal board is really 2x2 board with extra diagonal
+    # board size > 36 will create double-digit coordinates in console;
+    # this is fine since this method is only for dev purposes
+    center_x, center_y = centerBoard
+    origin_x, origin_y =
+      center_x - (@board_size / 2), center_y - (@board_size / 2)
+    # print "Center of board is at #{center_x}, #{center_y}\n"
+    (@board_size - 1).step(0, -1) do |j|
+      print "#{" " * j}#{((j + origin_y) % @board_size).to_s(36)}|"
+      temp_array = @filled_board_spaces[(j + origin_y) % @board_size]
+      @board_size.times do |i|
+        # temp_array[i] = "t" if temp_array[i] == "a" # real post-tonal notation
+        # temp_array[i] = "e" if temp_array[i] == "b"
+        print "#{temp_array[(i + origin_x) % @board_size][0] == :empty ?
+          "." : temp_array[(i + origin_x) % @board_size][0]} "
+      end
+      case j
+        when 2; print "  |  4 5  | how hexagonal orientation works:"
+        when 1; print "   | 3 x 0 | top pc is located at x"
+        when 0; print "    |  2 1  | bottom pc is located at number"
+      end
+      print "\n"
+    end
+    print " #{"-" * 2 * @board_size}\n"
+    @board_size.times do |i|
+      print "#{((i + origin_x) % @board_size).to_s(36)} "
+    end
+    print "\n"
+  end
+
+  def showScore
+    print "Your score is #{@score}.\n"
+  end
+
+  def centerBoard # shows center of smallest rectangle that encloses all played dyadminos
+    # only for view purposes, data is unaffected
+    # for DEV: for actual interface, improve this algorithm by weighting individual filled spaces
+    min_x = max_x = @center_x
+    min_y = max_y = @center_y
+    # refactor, obviously
+    min_y += -1 until (@filled_board_spaces[min_y % @board_size] - [[:empty]]).empty? ||
+      min_y % @board_size == @center_y + 1
+    max_y += 1 until (@filled_board_spaces[max_y % @board_size] - [[:empty]]).empty? ||
+      max_y % @board_size == @center_y - 1
+    # for DEV: I didn't know a better way to iterate across arrays within arrays
+    # as if x and y axes were switched, so this needs to be refactored
+    begin
+      temp_array = Array.new
+      min_x += -1
+      @board_size.times { |j| temp_array << @filled_board_spaces[j][min_x % @board_size][0] }
+    end until (temp_array - [:empty]).empty? || min_x % @board_size == @center_x + 1
+    begin
+      temp_array = Array.new
+      max_x += 1
+      @board_size.times { |j| temp_array << @filled_board_spaces[j][max_x % @board_size][0] }
+    end until (temp_array - [:empty]).empty? || max_x % @board_size == @center_x - 1
+    @center_x, @center_y = (max_x + min_x) / 2, (max_y + min_y) / 2
+    return @center_x, @center_y
+  end
 end
