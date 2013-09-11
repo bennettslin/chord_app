@@ -17,7 +17,7 @@ loop do
     break
   elsif ask_slot[0] == "m"
     game_tiles.testing(1)
-    print "There is no legal move to be made.\n" if !game_tiles.playBestOfNLegalMoves(5)
+    print "There is no legal move to be made.\n" if !game_tiles.playBestOfNLegalMoves(100)
     game_tiles.testing(0)
   elsif
     slot_num = ask_slot[0].to_i

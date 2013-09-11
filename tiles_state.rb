@@ -24,7 +24,7 @@ class TilesState
     # within that, array where first value is either :empty or single pc, second value is dyadmino pcs
     @board_size.times do # creates array of arrays of :empty symbol
       temp_array = Array.new
-      @board_size.times { temp_array << [:empty] }
+      @board_size.times { temp_array << [:empty, nil] }
       @filled_board_spaces << temp_array
     end
     @score = 0
@@ -41,12 +41,11 @@ class TilesState
   # converts to board orientation, checks if legal move, and if so commits it
     low_x, low_y, high_x, high_y =
       orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
-    # this_move_siffr is an array
-    # siffr is just an acronym for each chord's sonority, icp_form, and fake_root
-    move_legal, this_move_siffr =
+    # this_move_icp_forms is an array
+    move_legal, this_move_icp_forms =
       checkMove(slot_num, low_x, low_y, high_x, high_y)
     if move_legal
-      commitMove(slot_num, low_x, low_y, high_x, high_y, this_move_siffr)
+      commitMove(slot_num, low_x, low_y, high_x, high_y)
     end
   end
 
@@ -62,8 +61,7 @@ class TilesState
     end
     best_move = array_of_legal_moves[index_of_max_points]
     commitMove(best_move[:slot_num], best_move[:low_x], best_move[:low_y],
-      best_move[:high_x], best_move[:high_y], best_move[:move_points],
-      best_move[:this_move_siffr])
+      best_move[:high_x], best_move[:high_y])
     return true
   end
 
@@ -84,17 +82,17 @@ class TilesState
             @test_counter += 1
             low_x, low_y, high_x, high_y =
               orientToBoard(x, y, @rack_slots[slot_num][:orient], board_orient)
-            move_legal, this_move_siffr =
+            move_legal, this_move_icp_forms =
               checkMove(slot_num, low_x, low_y, high_x, high_y)
             if move_legal
               move_points = 0
-              this_move_siffr.each do |this_chord|
-                move_points += calculateChordPoints(this_chord[:icp_form])
+              this_move_icp_forms.each do |this_icp_form|
+                move_points += calculateChordPoints(this_icp_form)
               end
               array_of_legal_moves <<
                 { slot_num: slot_num, low_x: low_x, low_y: low_y,
                   high_x: high_x, high_y: high_y, move_points: move_points,
-                  this_move_siffr: this_move_siffr }
+                  this_move_icp_forms: this_move_icp_forms }
               return array_of_legal_moves if array_of_legal_moves.count == num_moves
             end
             flipDyadmino(slot_num)
@@ -110,26 +108,38 @@ class TilesState
     # first checks if physical placement of dyadmino is legal,
     # then checks whether all possible sonorities made are legal
     return false if !thisMoveLegalPhysically?(low_x, low_y, high_x, high_y)
-    musically_legal, this_move_siffr =
+    musically_legal, this_move_icp_forms =
       thisMoveLegalMusically?(slot_num, low_x, low_y, high_x, high_y)
     if musically_legal
-      return true, this_move_siffr
+      return true, this_move_icp_forms
     else
       print printMessage(:no_legal_chord, nil) unless @testing > 0
       return false
     end
   end
 
-  def commitMove(slot_num, low_x, low_y, high_x, high_y, move_points, this_move_siffr)
+  def commitMove(slot_num, low_x, low_y, high_x, high_y)
     # method to be called by either player or machine
     # once move is deemed legal, permanently changes state of pile, rack, and board
-    move_points, messages = addPointsAndReturnChordNames(this_move_siffr)
+    pcs = @rack_slots[slot_num][:pcs]
+    array_of_sonorities =
+      scanSurroundingSpaces(:commit, pcs, low_x, low_y, high_x, high_y)
+    array_of_frifs = Array.new # short for fake root, icp_form, sonority
+    array_of_sonorities.each do |son|
+      icp_form, fake_root = getICPrimeForm(son[0])
+      if thisSonorityLegal?(icp_form, @legal_chords) # no need to recheck for illegals
+        #this just eliminates monads, legal dyads, and incompletes
+        array_of_frifs <<
+          { fake_root: fake_root, icp_form: icp_form, sonority: son[0] }
+      end
+    end
+    move_points, messages = addPointsAndReturnChordNames(array_of_frifs)
     ontoBoard(@rack_slots[slot_num][:pcs], low_x, low_y, high_x, high_y)
     intoRack(slot_num)
     @score += move_points
     @turn += 1
     messages.each { |this_message| print this_message } if @testing < 2
-    if @testing > 0
+    if @testing > 0 # low-level measurement of process activity
       print printMessage(:test_counter, nil)
       @test_counter = 0
     end
@@ -145,29 +155,30 @@ class TilesState
     array_of_sonorities = Array.new
     pcs = @rack_slots[slot_num][:pcs]
     array_of_sonorities =
-      scanSurroundingSpaces(pcs, low_x, low_y, high_x, high_y)
+      scanSurroundingSpaces(:check, pcs, low_x, low_y, high_x, high_y)
+    # :check symbol calls scanSurroundingSpaces method only to check, not commit
     if array_of_sonorities.class == Symbol # this means it's an error, not an array
       print printMessage(array_of_sonorities, nil) unless @testing > 0
       return false
     else
-      this_move_siffr = Array.new
-      # siffr is just an acronym for each chord's sonority, icp_form, and fake_root
+      this_move_icp_forms = Array.new
       array_of_sonorities.each do |son|
-        whether_legal_chord, icp_form, fake_root = checkLegalChord(son[0])
-        if son[0].length >= 3 && whether_legal_chord
+        whether_legal_chord, icp_form = checkLegalChord(son)
+        if son.length >= 3 && whether_legal_chord
           legal_move = true
-          this_move_siffr <<
-            { sonority: son[0], icp_form: icp_form, fake_root: fake_root }
-        elsif son[0].length == 3 && checkLegalIncomplete(son[0])
-        elsif son[0].length < 3 # dyad, no action or message
+          this_move_icp_forms << icp_form
+        elsif son.length == 3 && checkLegalIncomplete(son)
+        elsif son.length < 3 # dyad, no action or message
         else
-          print printMessage(:illegal_sonority, son[0]) unless @testing > 0
+          print printMessage(:illegal_sonority, son) unless @testing > 0
           return false
         end
       end
     end
-    return true, this_move_siffr if legal_move
+    return true, this_move_icp_forms if legal_move
   end
+
+  #refactor so getICPrime form is called in musically method, not check legal methods?
 
   def checkLegalIncomplete(sonority)
     # returns true if this is a legal incomplete seventh under the given rules
@@ -181,7 +192,7 @@ class TilesState
     # if this is a legal chord under the given rules
     icp_form, fake_root = getICPrimeForm(sonority)
     whether_legal_chord = thisSonorityLegal?(icp_form, @legal_chords)
-    return whether_legal_chord, icp_form, fake_root
+    return whether_legal_chord, icp_form
   end
 
   def thisSonorityLegal?(icp_form, array_of_sonorities)
@@ -303,70 +314,120 @@ class TilesState
     return true
   end
 
-  def scanSurroundingSpaces(pcs, low_x, low_y, high_x, high_y)
+  def scanSurroundingSpaces(check_or_commit, pcs, low_x, low_y, high_x, high_y)
     # returns EVERY sonority a dyad or larger that is formed by the given dyadmino placement
-    # if none are illegal for immediately identifiable physical reasons
+    # as long as none are illegal for immediately identifiable physical reasons
     array_of_sonorities = Array.new
     low_pc, high_pc = pcs[0], pcs[1]
+    origin = { low_pc: low_pc, low_x: low_x, low_y: low_y,
+      high_pc: high_pc, high_x: high_x, high_y: high_y }
     pcs_to_check = [{ pc: low_pc, x: low_x, y: low_y },
       { pc: high_pc, x: high_x, y: high_y }]
-    directions_to_check = [:eastwest, :se_to_nw, :sw_to_ne]
-    if low_y == high_y # ensures that same direction of dyadmino orientation isn't checked twice
-      parallel_axis = directions_to_check[0]
+    axes_to_check = [:eastwest, :se_to_nw, :sw_to_ne]
+    if low_y == high_y # ensures that same axis of dyadmino orientation isn't checked twice
+      parallel_axis = axes_to_check[0]
     elsif low_x == high_x
-      parallel_axis = directions_to_check[1]
+      parallel_axis = axes_to_check[1]
     else
-      parallel_axis = directions_to_check[2]
+      parallel_axis = axes_to_check[2]
     end
-    pcs_to_check.each do |origin|
-      directions_to_check.each do |dir|
-        temp_sonority = [[origin[:pc], pcs]]
-        unless origin[:pc] == high_pc && parallel_axis == dir
-          [-1, 1].each do |vector| # checks in both directions
-            temp_x, temp_y = origin[:x], origin[:y]
-            temp_pc = Array.new
-            while temp_pc[0] != :empty
-              # establishes that the pc in the temporary container is NOT the empty slot
-              # where the dyadmino might go
-              case dir
-                when :se_to_nw; temp_y = (temp_y + vector) % @board_size
-                when :eastwest; temp_x = (temp_x + vector) % @board_size
-                when :sw_to_ne; temp_x, temp_y = (temp_x + vector) % @board_size,
-                  (temp_y - vector) % @board_size
-              end
-              if temp_x == low_x && temp_y == low_y
-                temp_pc = [low_pc, pcs]
-              elsif temp_x == high_x && temp_y == high_y
-                temp_pc = [high_pc, pcs]
-              else
-                temp_pc = @filled_board_spaces[temp_y][temp_x]
-              end
-              return checkScanNotIllegal(temp_sonority, temp_pc[0]) if
-                checkScanNotIllegal(temp_sonority, temp_pc[0]).class == Symbol
-              # a returned symbol means it's illegal
-              if temp_pc[0] != :empty
-                vector == -1 ? temp_sonority.unshift(temp_pc) : temp_sonority.push(temp_pc)
-              end
-            end
+    pcs_to_check.each do |pc_to_check| # two pcs to check
+      axes_to_check.each do |axis| # three axes to check
+        unless pc_to_check[:pc] == high_pc && parallel_axis == axis # eliminates the parallel axis
+          # check_or_commit calls different methods
+          # depending on whether the purpose is to check or to commit
+          if check_or_commit == :check
+            sonority = scanThisAxisToCheck(pc_to_check, axis, origin)
+            return sonority if sonority.class == Symbol # a returned symbol means it's illegal
+            array_of_sonorities << sonority if sonority.length > 1
+          elsif check_or_commit == :commit
+            sonority = scanThisAxisToCommit(pc_to_check, pcs, axis, origin)
+            array_of_sonorities << sonority if sonority[0].length > 1
           end
         end
-        array_of_sonorities << returnSonorityAndDyadminoPCs(temp_sonority) if temp_sonority.count > 1
       end
     end
+    # if :check, this is a straightforward array of sonorities
+    # if :commit, this in an array of arrays of sonorities plus dyadmino pcs
     return array_of_sonorities
   end
 
-  def returnSonorityAndDyadminoPCs(temp_sonority) # called only by scanSurroundingSpaces method
-    # for DEV: refactor so that machine testing does not collect dyadmino pcs
-    # it takes up a lot of extra time
-    single_pc_array, dyadmino_pcs = Array.new(2) { [] }
-    if temp_sonority.count > 1
-      temp_sonority.each do |son|
-        single_pc_array << son[0]
-        dyadmino_pcs << son[1]
+  def scanThisAxisToCheck(pc_to_check, axis, origin)
+    # Because the tests and the eventual AI opponent will necessarily call this method
+    # A LOT, and will not care about how the dyadminos are arranged while doing so,
+    # keeping this method separate from the scanThisAxisToCommit method helps it to stay
+    # maximally efficient, even though the two methods are ultimately very similar
+    temp_sonority = [pc_to_check[:pc]]
+    [-1, 1].each do |vector| # checks in both directions of axis
+      temp_x, temp_y = pc_to_check[:x], pc_to_check[:y]
+      temp_pc = String.new
+      while temp_pc != :empty
+        # establishes that the pc in the temporary container is NOT the empty slot
+        # where the dyadmino might go
+        case axis
+          when :se_to_nw; temp_y = (temp_y + vector) % @board_size
+          when :eastwest; temp_x = (temp_x + vector) % @board_size
+          when :sw_to_ne; temp_x, temp_y = (temp_x + vector) % @board_size,
+            (temp_y - vector) % @board_size
+        end
+        if temp_x == origin[:low_x] && temp_y == origin[:low_y]
+          temp_pc = origin[:low_pc]
+        elsif temp_x == origin[:high_x] && temp_y == origin[:high_y]
+          temp_pc = origin[:high_pc]
+        else
+          temp_pc = @filled_board_spaces[temp_y][temp_x][0]
+        end
+        return checkScanNotIllegal(temp_sonority, temp_pc) if
+          checkScanNotIllegal(temp_sonority, temp_pc).class == Symbol
+        # a returned symbol means it's illegal
+        if temp_pc != :empty
+          vector == -1 ? temp_sonority.unshift(temp_pc) : temp_sonority.push(temp_pc)
+        end
       end
     end
-    return [single_pc_array.sort.join, dyadmino_pcs]
+    return temp_sonority.sort!.join # this sonority is now a single string!
+  end
+
+  def scanThisAxisToCommit(pc_to_check, pcs, axis, origin)
+    temp_sonority = [[pc_to_check[:pc], pcs]]
+    [-1, 1].each do |vector| # checks in both directions of axis
+      temp_x, temp_y = pc_to_check[:x], pc_to_check[:y]
+      temp_pc = Array.new
+      while temp_pc[0] != :empty
+        # establishes that the pc in the temporary container is NOT the empty slot
+        # where the dyadmino might go
+        case axis
+          when :se_to_nw; temp_y = (temp_y + vector) % @board_size
+          when :eastwest; temp_x = (temp_x + vector) % @board_size
+          when :sw_to_ne; temp_x, temp_y = (temp_x + vector) % @board_size,
+            (temp_y - vector) % @board_size
+        end
+        if temp_x == origin[:low_x] && temp_y == origin[:low_y]
+          temp_pc = [origin[:low_pc], pcs]
+        elsif temp_x == origin[:high_x] && temp_y == origin[:high_y]
+          temp_pc = [origin[:high_pc], pcs]
+        else
+          temp_pc = @filled_board_spaces[temp_y][temp_x]
+        end
+        if temp_pc[0] != :empty
+          vector == -1 ? temp_sonority.unshift(temp_pc) : temp_sonority.push(temp_pc)
+        end
+      end
+    end
+    return returnSonorityAndDyadminoPCs(temp_sonority) # this is an array
+    # first value is sonority, second value is the dyadmino pcs that make up the sonority
+  end
+
+  def returnSonorityAndDyadminoPCs(temp_sonority)
+    single_pc_array, dyadmino_pcs = Array.new(2) { [] }
+    temp_sonority.sort_by!{ |son| son[0] }
+    # this makes the order of dyadmino pcs unique, as determined by the unique order of pcs
+    # that make up the sonority
+    temp_sonority.each do |son|
+      single_pc_array << son[0]
+      dyadmino_pcs << son[1]
+    end
+    return [single_pc_array.join, dyadmino_pcs]
   end
 
   def checkScanNotIllegal(temp_sonority, temp_pc)
@@ -583,10 +644,10 @@ class TilesState
     end
   end
 
-  def addPointsAndReturnChordNames(this_move_siffr)
+  def addPointsAndReturnChordNames(array_of_frifs)
     move_points = 0
     messages = Array.new
-    this_move_siffr.each do |chord|
+    array_of_frifs.each do |chord|
       chord_points = calculateChordPoints(chord[:icp_form])
       move_points += chord_points
       real_root, chord_type = getRootAndType(chord[:icp_form], chord[:fake_root])
