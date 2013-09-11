@@ -17,9 +17,9 @@ class TilesState
     # board is hexagonal with x and y axes; the z axis is the (x = -y) diagonal line
     @board_size = 23 # mod number, kept small for dev purposes; for production,
     # board size should be large enough that players won't notice when edges wrap back around
-    @board_spaces = Array.new # assigns board dyadminoes to board spaces for game logic
     @rack_slots = Array.new # assigns rack dyadminoes to rack slots
-    @filled_board_spaces = Array.new # keeps track of which board slots are filled
+    @board_chords = Array.new # keeps track of what dyadminos make up what chords on the board
+    @filled_board_spaces = Array.new # keeps track of which board spaces are filled
     # y-axis value is the first array; within that, x-axis value is the second array;
     # within that, array where first value is either :empty or single pc, second value is dyadmino pcs
     @board_size.times do # creates array of arrays of :empty symbol
@@ -35,7 +35,7 @@ class TilesState
     initialBoard
   end
 
-# CONTROLLERS
+# MOVE CONTROLLERS
 
   def playDyadmino(slot_num, top_x, top_y, board_orient)
   # converts to board orientation, checks if legal move, and if so commits it
@@ -304,15 +304,8 @@ class TilesState
   end
 
   def scanSurroundingSpaces(low_pc, low_x, low_y, high_pc, high_x, high_y)
-    # to be refactored?
     # returns EVERY sonority a dyad or larger that is formed by the given dyadmino placement
-    # UNLESS it finds: repeated pcs, more than the maximum allowed in a row,
-    # and semitones under folk or rock rules (this should be its own method)
-    case @rule
-      when (0..4) ; max_card = 4
-      when 5; max_card = 8
-      when 6; max_card = 6
-    end
+    # if none are illegal for immediately identifiable physical reasons
     array_of_sonorities = Array.new
     pcs_to_check = [{ pc: low_pc, x: low_x, y: low_y },
       { pc: high_pc, x: high_x, y: high_y }]
@@ -339,7 +332,6 @@ class TilesState
                 when :sw_to_ne; temp_x, temp_y = (temp_x + vector) % @board_size,
                   (temp_y - vector) % @board_size
               end
-
               if temp_x == low_x && temp_y == low_y
                 temp_pc = low_pc
               elsif temp_x == high_x && temp_y == high_y
@@ -347,19 +339,8 @@ class TilesState
               else
                 temp_pc = @filled_board_spaces[temp_y][temp_x][0]
               end
-
-              if temp_sonority.count > max_card
-                return :illegal_maxed_out_row
-              elsif temp_pc != :empty && temp_sonority.include?(temp_pc)
-                return :illegal_repeated_pcs
-              elsif @rule < 3 # ensures there are no semitones when playing by folk and rock rules
-                [-1, 1].each do |j|
-                  if temp_pc != :empty && temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12))
-                    return :illegal_semitones
-                  end
-                end
-              end
-
+              return checkScanNotIllegal(temp_sonority, temp_pc) if
+                !checkScanNotIllegal(temp_sonority, temp_pc)
               if temp_pc != :empty
                 vector == -1 ? temp_sonority.unshift(temp_pc) : temp_sonority.push(temp_pc)
               end
@@ -370,6 +351,29 @@ class TilesState
       end
     end
     return array_of_sonorities
+  end
+
+  def checkScanNotIllegal(temp_sonority, temp_pc)
+    # checks that sonority doesn't have repeated pcs, more than the maximum allowed in a row,
+    # or semitones under folk or rock rules
+    # for DEV: refactor? the semitone constraint might be more efficiently calculated with legal incompletes
+    case @rule
+      when (0..4) ; max_card = 4
+      when 5; max_card = 8
+      when 6; max_card = 6
+    end
+    if temp_sonority.count > max_card
+      return :illegal_maxed_out_row
+    elsif temp_pc != :empty && temp_sonority.include?(temp_pc)
+      return :illegal_repeated_pcs
+    elsif @rule < 3 # ensures there are no semitones when playing by folk and rock rules
+      [-1, 1].each do |j|
+        if temp_pc != :empty && temp_sonority.include?(((temp_pc.to_i(12) + j) % 12).to_s(12))
+          return :illegal_semitones
+        end
+      end
+    end
+    return true
   end
 
   def returnEmptyNeighborSpaces
@@ -480,8 +484,6 @@ class TilesState
     # places dyadmino on board and records state
     @filled_board_spaces[low_y][low_x] = [pcs[0], pcs]
     @filled_board_spaces[high_y][high_x] = [pcs[1], pcs]
-    @board_spaces << { pcs: pcs, low_x: low_x, low_y: low_y,
-      high_x: high_x, high_y: high_y }
   end
 
 # TEST HELPERS
