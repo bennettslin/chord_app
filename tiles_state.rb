@@ -770,9 +770,9 @@ class TilesState
   def showBoard # hexagonal board is really 2x2 board with extra diagonal
     # board size > 36 will create double-digit coordinates in console;
     # this is fine since this method is only for dev purposes
-    center_x, center_y = centerBoard
+    centerBoard
     origin_x, origin_y =
-      center_x - (@board_size / 2), center_y - (@board_size / 2)
+      @center_x - (@board_size / 2), @center_y - (@board_size / 2)
     # print "Center of board is at #{center_x}, #{center_y}\n"
     (@board_size - 1).step(0, -1) do |j|
       print "#{" " * j}#{((j + origin_y) % @board_size).to_s(36)}|"
@@ -803,27 +803,22 @@ class TilesState
 
   def centerBoard # shows center of smallest rectangle that encloses all played dyadminos
     # only for view purposes, data is unaffected
-    # for DEV: for actual interface, improve this algorithm by weighting individual filled spaces
-    min_x = max_x = @center_x
-    min_y = max_y = @center_y
-    # refactor, obviously
-    min_y += -1 until (@filled_board_spaces[min_y % @board_size] - [[:empty]]).empty? ||
-      min_y % @board_size == @center_y + 1
-    max_y += 1 until (@filled_board_spaces[max_y % @board_size] - [[:empty]]).empty? ||
-      max_y % @board_size == @center_y - 1
-    # for DEV: I didn't know a better way to iterate across arrays within arrays
-    # as if x and y axes were switched, so this needs to be refactored
-    begin
-      temp_array = Array.new
-      min_x += -1
-      @board_size.times { |j| temp_array << @filled_board_spaces[j][min_x % @board_size][0] }
-    end until (temp_array - [:empty]).empty? || min_x % @board_size == @center_x + 1
-    begin
-      temp_array = Array.new
-      max_x += 1
-      @board_size.times { |j| temp_array << @filled_board_spaces[j][max_x % @board_size][0] }
-    end until (temp_array - [:empty]).empty? || max_x % @board_size == @center_x - 1
-    @center_x, @center_y = (max_x + min_x) / 2, (max_y + min_y) / 2
-    return @center_x, @center_y
+    # for DEV: for actual interface, possible to improve this algorithm
+    # by weighting individual filled spaces
+    temp_x = [{ x: @center_x, dir: -1 }, { x: @center_x, dir: 1 }] # for both temp_x and temp_y containers,
+    temp_y = [{ y: @center_y, dir: -1 }, { y: @center_y, dir: 1 }] # first hash is min, second is max
+    temp_y.each do |this_y|
+      this_y[:y] += this_y[:dir] until (@filled_board_spaces[this_y[:y] % @board_size] - [[:empty, nil]]).empty? ||
+        this_y[:y] % @board_size == @center_y - this_y[:dir]
+    end
+    temp_x.each do |this_x|
+      begin
+        temp_array = Array.new
+        this_x[:x] += this_x[:dir]
+        @board_size.times { |j| temp_array << @filled_board_spaces[j][this_x[:x] % @board_size][0] }
+      end until (temp_array - [:empty]).empty? || this_x[:x] % @board_size == @center_x - this_x[:dir]
+    end
+    @center_x, @center_y = (temp_x[0][:x] + temp_x[1][:x]) / 2, (temp_y[0][:y] + temp_y[1][:y]) / 2
   end
+
 end
