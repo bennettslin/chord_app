@@ -12,17 +12,22 @@ game_tiles = TilesState.new(ask_rule.to_i)
 loop do
   game_tiles.userView
   puts "*" * 72
-  ask_slot = ask("Enter rack slot number, or 'm' to play a random legal move.\n(or 'q' to quit)")
+  ask_slot = ask("Enter rack slot number, 'm' to play a random legal move,\n"\
+    "or 'g' to get dyadmino coordinates. (or 'q' to quit)")
   if ask_slot[0] == "q"
     break
   elsif ask_slot[0] == "m"
     game_tiles.testing(1)
     print "There is no legal move to be made.\n" if !game_tiles.playBestOfNLegalMoves(100)
     game_tiles.testing(0)
+  elsif ask_slot[0] == "g"
+    ask_dyadmino = ask("Name of dyadmino, low pc and high pc.")
+    game_tiles.getDyadminoBoardCoordinates(ask_dyadmino.to_sym)
   elsif
     slot_num = ask_slot[0].to_i
     if slot_num.to_i.class == Fixnum
-      ask_action = ask("Choose 'f' to flip, 'r' to replace, 'p' to play\nor second slot number to swap.")
+      ask_action = ask("Choose 'f' to flip, 'r' to replace, 'p' to play,\n"\
+        "or second slot number to swap.")
       if ask_action[0] == "f"
         game_tiles.flipRackDyadmino(slot_num)
       elsif ask_action[0] == "r"

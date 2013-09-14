@@ -356,7 +356,7 @@ class TilesState
     # Because the tests and the eventual AI opponent will necessarily call this method
     # A LOT, and will not care about how the dyadminos are arranged while doing so,
     # keeping this method separate from the scanThisAxisToCommit method helps it to stay
-    # maximally efficient, even though the two methods are ultimately very similar
+    # maximally efficient, even though the two methods are mostly the same
     temp_sonority = [pc_to_check[:pc]]
     [-1, 1].each do |vector| # checks in both directions of axis
       temp_x, temp_y = pc_to_check[:x], pc_to_check[:y]
@@ -389,6 +389,7 @@ class TilesState
   end
 
   def scanThisAxisToCommit(pc_to_check, pcs, axis, origin)
+    # unlike the check method, the commit method returns the dyadmino pcs as well
     temp_sonority = [[pc_to_check[:pc], pcs]]
     [-1, 1].each do |vector| # checks in both directions of axis
       temp_x, temp_y = pc_to_check[:x], pc_to_check[:y]
@@ -416,6 +417,18 @@ class TilesState
     end
     return returnSonorityAndDyadminoPCs(temp_sonority) # this is an array
     # first value is sonority, second value is the dyadmino pcs that make up the sonority
+  end
+
+  def getDyadminoBoardCoordinates(pcs)
+    low_x = low_y = high_x = high_y = nil
+    @board_size.times do |j|
+      low_i = @filled_board_spaces[j].index([pcs[0], pcs])
+      high_i = @filled_board_spaces[j].index([pcs[1], pcs])
+      low_y, low_x = j, low_i unless low_i.nil?
+      high_y, high_x = j, high_i unless high_i.nil?
+    end
+    return low_x, low_y, high_x, high_y
+    # print "x-coord: #{low_x}, #{low_y}, y-coord: #{high_x}, #{high_y}.\n"
   end
 
   def returnSonorityAndDyadminoPCs(temp_sonority)
@@ -561,11 +574,6 @@ class TilesState
     # places dyadmino on board and records state
     @filled_board_spaces[low_y][low_x] = [pcs[0], pcs]
     @filled_board_spaces[high_y][high_x] = [pcs[1], pcs]
-  end
-
-  def flipBoardDyadminos(low_x, low_y, high_x, high_y)
-    @filled_board_spaces[low_y][low_x][0], @filled_board_spaces[high_y][high_x][0] =
-      @filled_board_spaces[high_y][high_x][0], @filled_board_spaces[low_y][low_x][0]
   end
 
 # TEST HELPERS
