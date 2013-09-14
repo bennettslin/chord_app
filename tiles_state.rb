@@ -39,11 +39,12 @@ class TilesState
 
   def playDyadmino(slot_num, top_x, top_y, board_orient)
   # converts to board orientation, checks if legal move, and if so commits it
+    pcs = getPCsFromRackSlot(slot_num)
     low_x, low_y, high_x, high_y =
       orientToBoard(top_x, top_y, @rack_slots[slot_num][:orient], board_orient)
     # this_move_icp_forms is an array
     move_legal, this_move_icp_forms =
-      checkMove(slot_num, low_x, low_y, high_x, high_y)
+      checkMove(pcs, low_x, low_y, high_x, high_y)
     if move_legal
       commitMove(slot_num, low_x, low_y, high_x, high_y)
     end
@@ -77,13 +78,14 @@ class TilesState
       x, y = coord[0], coord[1]
       shuffled_board_orients.each do |board_orient| # determines which orientations are legal
         shuffled_rack_slot_nums.each do |slot_num|
-          @rack_slots[slot_num][:orient] = rand(2)
+          # @rack_slots[slot_num][:orient] = rand(2) # unnecessary line, already random
+          pcs = getPCsFromRackSlot(slot_num)
           2.times do
             @test_counter += 1
             low_x, low_y, high_x, high_y =
               orientToBoard(x, y, @rack_slots[slot_num][:orient], board_orient)
             move_legal, this_move_icp_forms =
-              checkMove(slot_num, low_x, low_y, high_x, high_y)
+              checkMove(pcs, low_x, low_y, high_x, high_y)
             if move_legal
               move_points = 0
               this_move_icp_forms.each do |this_icp_form|
@@ -103,13 +105,13 @@ class TilesState
     return array_of_legal_moves
   end
 
-  def checkMove(slot_num, low_x, low_y, high_x, high_y)
+  def checkMove(pcs, low_x, low_y, high_x, high_y)
     # method to be called by either player or machine
     # first checks if physical placement of dyadmino is legal,
     # then checks whether all possible sonorities made are legal
     return false if !thisMoveLegalPhysically?(low_x, low_y, high_x, high_y)
     musically_legal, this_move_icp_forms =
-      thisMoveLegalMusically?(slot_num, low_x, low_y, high_x, high_y)
+      thisMoveLegalMusically?(pcs, low_x, low_y, high_x, high_y)
     if musically_legal
       return true, this_move_icp_forms
     else
@@ -147,13 +149,16 @@ class TilesState
 
 # MUSICAL LOGIC
 
-  def thisMoveLegalMusically?(slot_num, low_x, low_y, high_x, high_y)
+  def getPCsFromRackSlot(slot_num)
+    return @rack_slots[slot_num][:pcs]
+  end
+
+  def thisMoveLegalMusically?(pcs, low_x, low_y, high_x, high_y)
     # finds all sonorities made by this move; if none are illegal
     # and at least ONE legal chord is made, returns all legal chords made by this move,
     # along with raw chord descriptions (sonority, icp_form, and fake_root)
     legal_move = false # illegal until proven otherwise
     array_of_sonorities = Array.new
-    pcs = @rack_slots[slot_num][:pcs]
     array_of_sonorities =
       scanSurroundingSpaces(:check, pcs, low_x, low_y, high_x, high_y)
     # :check symbol calls scanSurroundingSpaces method only to check, not commit
@@ -167,8 +172,10 @@ class TilesState
         if son.length >= 3 && whether_legal_chord
           legal_move = true
           this_move_icp_forms << icp_form
-        elsif son.length == 3 && checkLegalIncomplete(son)
-        elsif son.length < 3 # dyad, no action or message
+        # delete legal incompletes and dyads from array
+        # because they score no points
+        elsif son.length == 3 && checkLegalIncomplete(son) || son.length < 3
+          array_of_sonorities.delete(son)
         else
           print printMessage(:illegal_sonority, son) unless @testing > 0
           return false
@@ -431,6 +438,32 @@ class TilesState
     # print "x-coord: #{low_x}, #{low_y}, y-coord: #{high_x}, #{high_y}.\n"
   end
 
+  def repositionDyadminoOnBoard(pcs, new_top_x, new_top_y, board_orient)
+    # checks that chords formed are the exact same before committing reposition
+    new_low_x, new_low_y, new_high_x, new_high_y =
+      orientToBoard(new_top_x, new_top_y, 0, board_orient)
+    old_low_x, old_low_y, old_high_x, old_high_y = getDyadminoBoardCoordinates(pcs)
+
+    # establishes what chords currently contain the dyadmino,
+    # since it might be different from when it was first placed
+    old_array_of_sonorities =
+      scanSurroundingSpaces(:commit, pcs, old_low_x, old_low_y, old_high_x, old_high_y).sort
+    # removes dyadmino from board for checking purposes
+    offBoard(old_low_x, old_low_y, old_high_x, old_high_y)
+    new_array_of_sonorities =
+      scanSurroundingSpaces(:commit, pcs, new_low_x, new_low_y, new_high_x, new_high_y).sort
+
+    if old_array_of_sonorities == new_array_of_sonorities
+      ontoBoard(pcs, new_low_x, new_low_y, new_high_x, new_high_y)
+    else
+      ontoBoard(pcs, old_low_x, old_low_y, old_high_x, old_high_y)
+      print printMessage(:illegal_reposition, nil) if @testing < 2
+      # return false
+    end
+    print "Old array: #{old_array_of_sonorities}\n"
+    print "New array: #{new_array_of_sonorities}\n"
+  end
+
   def returnSonorityAndDyadminoPCs(temp_sonority)
     single_pc_array, dyadmino_pcs = Array.new(2) { [] }
     temp_sonority.sort_by!{ |son| son[0] }
@@ -572,7 +605,6 @@ class TilesState
       intoPile(starting_dyadmino) unless starting_dyadmino.nil?
       starting_dyadmino = fromPile
       ontoBoard(starting_dyadmino, low_x, low_y, high_x, high_y)
-    # print "There is this legal move: #{pickNRandomLegalMoves(1)}\n"
     end until pickNRandomLegalMoves(1) != []
   end
 
@@ -580,6 +612,12 @@ class TilesState
     # places dyadmino on board and records state
     @filled_board_spaces[low_y][low_x] = [pcs[0], pcs]
     @filled_board_spaces[high_y][high_x] = [pcs[1], pcs]
+  end
+
+  def offBoard(low_x, low_y, high_x, high_y)
+    # removes dyadmino from board for purpose of IMMEDIATE replacement
+    @filled_board_spaces[low_y][low_x] = @filled_board_spaces[high_y][high_x] =
+      [:empty, nil]
   end
 
 # TEST HELPERS
@@ -712,6 +750,8 @@ class TilesState
         "You can't have semitones under folk or rock rules.\n"
       when :illegal_sonority
         "[#{any_string}] isn't a legal sonority.\n"
+      when :illegal_reposition
+        "You can't break an already formed chord when repositioning a dyadmino.\n"
       when :no_legal_chord
         "You need to play at least one legal chord.\n"
       when :legal_chord
@@ -763,7 +803,7 @@ class TilesState
       @pile.sort!
       if @pile.count >= 20
         half = (@pile.count / 2)
-        print "In the pile:\n#{@pile[(0..half)].join(" ")}\n#{@pile[((half + 1)..-1)].join(" ")}\n"
+        print "In the pile:\n#{@pile[(0..(half))].join(" ")}\n#{@pile[((half + 1)..-1)].join(" ")}\n"
       else
         print "In the pile:\n#{@pile.join(" ")}\n"
       end
@@ -792,7 +832,7 @@ class TilesState
     centerBoard
     origin_x, origin_y =
       @center_x - (@board_size / 2), @center_y - (@board_size / 2)
-    # print "Center of board is at #{center_x}, #{center_y}\n"
+    # print "Center of board is at #{@center_x}, #{@center_y}\n"
     (@board_size - 1).step(0, -1) do |j|
       print "#{" " * j}#{((j + origin_y) % @board_size).to_s(36)}|"
       temp_array = @filled_board_spaces[(j + origin_y) % @board_size]

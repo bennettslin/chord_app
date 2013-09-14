@@ -14,17 +14,21 @@ loop do
   game_tiles.userView
   puts "*" * 72
   ask_slot = ask("Enter rack slot number, 'm' to play a random legal move,\n"\
-    "or 'g' to get dyadmino coordinates. (or 'q' to quit)")
+    "or 'r' to reposition a dyadmino. (or 'q' to quit)")
   if ask_slot[0] == "q"
     break
   elsif ask_slot[0] == "m"
     game_tiles.testing(1)
     print "There is no legal move to be made.\n" if !game_tiles.playBestOfNLegalMoves(100)
     game_tiles.testing(0)
-  elsif ask_slot[0] == "g"
-    ask_dyadmino = ask("Name of dyadmino, low pc and high pc.")
-    game_tiles.getDyadminoBoardCoordinates(ask_dyadmino.to_sym)
-
+  elsif ask_slot[0] == "r"
+    ask_dyadmino = ask("Dyadmino pcs:")
+    ask_top_x = ask("x-coordinate of top pc:")
+    ask_top_y = ask("y-coordinate of top pc:")
+    ask_board_orient = ask("orientation (0 through 5):")
+    game_tiles.repositionDyadminoOnBoard(ask_dyadmino.to_sym,
+      ask_top_x.to_i(36), ask_top_y.to_i(36), ask_board_orient.to_i)
+    # in mobile app, this will not be 36, but the size of the board instead
   elsif
     slot_num = ask_slot[0].to_i
     if slot_num.to_i.class == Fixnum
@@ -38,7 +42,8 @@ loop do
         ask_top_x = ask("x-coordinate of top pc:")
         ask_top_y = ask("y-coordinate of top pc:")
         ask_board_orient = ask("orientation (0 through 5):")
-        game_tiles.playDyadmino(slot_num, ask_top_x.to_i(36), ask_top_y.to_i(36), ask_board_orient.to_i)
+        game_tiles.playDyadmino(slot_num, ask_top_x.to_i(36),
+          ask_top_y.to_i(36), ask_board_orient.to_i)
         # game program ALWAYS orients each dyadmino based on low and high pcs
         # however, player's understanding of orientation is based on top and bottom pcs
       else
