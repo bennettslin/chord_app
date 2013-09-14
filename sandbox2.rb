@@ -21,10 +21,8 @@ c = [[[:hello], [:hello], [:help]], [[:hello], [:hello], [:hello]], [[:hello], [
 # puts (c[0] - [[:hello]])
 # puts (c[0] - [[:hello]]).empty?
 
-c.count.times do |j|
-  unless c[j].index([:help]).nil?
-    print "#{c[j].index(["help".to_sym])}, #{j}\n"
-  end
-end
-
-
+# c.count.times do |j|
+#   unless c[j].index([:help]).nil?
+#     print "#{c[j].index(["help".to_sym])}, #{j}\n"
+#   end
+# end

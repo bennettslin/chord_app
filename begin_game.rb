@@ -8,6 +8,7 @@ ask_rule = ask("Play by what rules? 0:folk, 1:rock, 2:rock with classical, 3: ja
 # legal chords array is stored in game_tiles instance
 # so that they're only called once per game match
 game_tiles = TilesState.new(ask_rule.to_i)
+game_tiles.testing(0)
 
 loop do
   game_tiles.userView
@@ -23,6 +24,7 @@ loop do
   elsif ask_slot[0] == "g"
     ask_dyadmino = ask("Name of dyadmino, low pc and high pc.")
     game_tiles.getDyadminoBoardCoordinates(ask_dyadmino.to_sym)
+
   elsif
     slot_num = ask_slot[0].to_i
     if slot_num.to_i.class == Fixnum

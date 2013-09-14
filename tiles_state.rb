@@ -1,7 +1,7 @@
 class TilesState
 
   def initialize(rule)
-    @testing = 0 # 0 is regular play, 1 is human testing, 2 is machine testing
+    @testing = 2 # 0 is regular play, 1 is human testing, 2 is machine testing
     @test_counter = 0 # can be commented out
     @legal_chords, @legal_incompletes = Array.new(2) { [] }
     @rule = rule
@@ -567,7 +567,13 @@ class TilesState
     # in each dyadmino, one pc always has a lower value than the other
     low_x, low_y, high_x, high_y =
       orientToBoard(@center_x, @center_y, rack_orient, board_orient)
-    ontoBoard(fromPile, low_x, low_y, high_x, high_y)
+    starting_dyadmino = nil
+    begin # ensures there's at least one legal move to start with
+      intoPile(starting_dyadmino) unless starting_dyadmino.nil?
+      starting_dyadmino = fromPile
+      ontoBoard(starting_dyadmino, low_x, low_y, high_x, high_y)
+    # print "There is this legal move: #{pickNRandomLegalMoves(1)}\n"
+    end until pickNRandomLegalMoves(1) != []
   end
 
   def ontoBoard(pcs, low_x, low_y, high_x, high_y)
@@ -821,14 +827,14 @@ class TilesState
     temp_y = [{ y: @center_y, dir: -1 }, { y: @center_y, dir: 1 }] # first hash is min, second is max
     temp_y.each do |this_y|
       this_y[:y] += this_y[:dir] until (@filled_board_spaces[this_y[:y] % @board_size] - [[:empty, nil]]).empty? ||
-        this_y[:y] % @board_size == @center_y - this_y[:dir]
+        this_y[:y] % @board_size == (@center_y - this_y[:dir]) % @board_size
     end
     temp_x.each do |this_x|
       begin
         temp_array = Array.new
-        this_x[:x] += this_x[:dir]
         @board_size.times { |j| temp_array << @filled_board_spaces[j][this_x[:x] % @board_size][0] }
-      end until (temp_array - [:empty]).empty? || this_x[:x] % @board_size == @center_x - this_x[:dir]
+        this_x[:x] += this_x[:dir]
+      end until (temp_array - [:empty]).empty? || this_x[:x] % @board_size == (@center_x - this_x[:dir]) % @board_size
     end
     @center_x, @center_y = (temp_x[0][:x] + temp_x[1][:x]) / 2, (temp_y[0][:y] + temp_y[1][:y]) / 2
   end
