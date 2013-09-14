@@ -24,9 +24,9 @@ loop do
     if slot_num.to_i.class == Fixnum
       ask_action = ask("Choose 'f' to flip, 'r' to replace, 'p' to play\nor second slot number to swap.")
       if ask_action[0] == "f"
-        game_tiles.flipDyadmino(slot_num)
+        game_tiles.flipRackDyadmino(slot_num)
       elsif ask_action[0] == "r"
-        game_tiles.replaceDyadmino(slot_num)
+        game_tiles.replaceRackDyadmino(slot_num)
       elsif ask_action[0] == "p"
         ask_top_x = ask("x-coordinate of top pc:")
         ask_top_y = ask("y-coordinate of top pc:")
@@ -37,7 +37,7 @@ loop do
       else
         slot_swap = ask_action[0].to_i
         if slot_swap.to_i.class == Fixnum && slot_swap != slot_num
-          game_tiles.swapDyadminos(slot_num, slot_swap)
+          game_tiles.swapRackDyadminos(slot_num, slot_swap)
         end
       end
     end

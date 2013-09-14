@@ -95,7 +95,7 @@ class TilesState
                   this_move_icp_forms: this_move_icp_forms }
               return array_of_legal_moves if array_of_legal_moves.count == num_moves
             end
-            flipDyadmino(slot_num)
+            flipRackDyadmino(slot_num)
           end
         end
       end
@@ -519,7 +519,7 @@ class TilesState
     end
   end
 
-  def replaceDyadmino(slot_num) # swaps single dyadmino back into pile
+  def replaceRackDyadmino(slot_num) # swaps single dyadmino back into pile
     if @pile.count >= 1 # does nothing if pile is empty
       held_pc = @rack_slots[slot_num][:pcs] # ensures different dyadmino from pile
       intoRack(slot_num)
@@ -531,13 +531,13 @@ class TilesState
 
 # RACK STATE CHANGES
 
-  def flipDyadmino(slot_num) # flips dyadmino upside-down in rack
+  def flipRackDyadmino(slot_num) # flips dyadmino upside-down in rack
     @rack_slots[slot_num][:orient] += 1 # value toggles between 0 and 1
     @rack_slots[slot_num][:orient] %= 2
     showRack unless @testing > 0
   end
 
-  def swapDyadminos(slot_1, slot_2)
+  def swapRackDyadminos(slot_1, slot_2)
     # places one dyadmino in another's slot on the rack and vice versa
     @rack_slots[slot_1], @rack_slots[slot_2] =
       @rack_slots[slot_2], @rack_slots[slot_1]
@@ -561,6 +561,11 @@ class TilesState
     # places dyadmino on board and records state
     @filled_board_spaces[low_y][low_x] = [pcs[0], pcs]
     @filled_board_spaces[high_y][high_x] = [pcs[1], pcs]
+  end
+
+  def flipBoardDyadminos(low_x, low_y, high_x, high_y)
+    @filled_board_spaces[low_y][low_x][0], @filled_board_spaces[high_y][high_x][0] =
+      @filled_board_spaces[high_y][high_x][0], @filled_board_spaces[low_y][low_x][0]
   end
 
 # TEST HELPERS
@@ -803,8 +808,7 @@ class TilesState
 
   def centerBoard # shows center of smallest rectangle that encloses all played dyadminos
     # only for view purposes, data is unaffected
-    # for DEV: for actual interface, possible to improve this algorithm
-    # by weighting individual filled spaces
+    # for actual interface, possible to improve this algorithm by weighting individual tiles
     temp_x = [{ x: @center_x, dir: -1 }, { x: @center_x, dir: 1 }] # for both temp_x and temp_y containers,
     temp_y = [{ y: @center_y, dir: -1 }, { y: @center_y, dir: 1 }] # first hash is min, second is max
     temp_y.each do |this_y|
