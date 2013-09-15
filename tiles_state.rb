@@ -168,13 +168,14 @@ class TilesState
     else
       this_move_icp_forms = Array.new
       array_of_sonorities.each do |son|
-        whether_legal_chord, icp_form = checkLegalChord(son)
+        icp_form, fake_root = getICPrimeForm(son)
+        whether_legal_chord = checkLegalChord(icp_form)
         if son.length >= 3 && whether_legal_chord
           legal_move = true
           this_move_icp_forms << icp_form
         # delete legal incompletes and dyads from array
         # because they score no points
-        elsif son.length == 3 && checkLegalIncomplete(son) || son.length < 3
+        elsif son.length == 3 && checkLegalIncomplete(icp_form) || son.length < 3
           array_of_sonorities.delete(son)
         else
           print printMessage(:illegal_sonority, son) unless @testing > 0
@@ -187,19 +188,16 @@ class TilesState
 
   #refactor so getICPrime form is called in musically method, not check legal methods?
 
-  def checkLegalIncomplete(sonority)
+  def checkLegalIncomplete(icp_form)
     # returns true if this is a legal incomplete seventh under the given rules
-    icp_form, fake_root = getICPrimeForm(sonority)
     whether_legal_incomplete = thisSonorityLegal?(icp_form, @legal_incompletes)
     return whether_legal_incomplete
   end
 
-  def checkLegalChord(sonority)
-    # returns value of true, and icp_form and fake root
-    # if this is a legal chord under the given rules
-    icp_form, fake_root = getICPrimeForm(sonority)
+  def checkLegalChord(icp_form)
+    # returns value of true if this is a legal chord under the given rules
     whether_legal_chord = thisSonorityLegal?(icp_form, @legal_chords)
-    return whether_legal_chord, icp_form
+    return whether_legal_chord
   end
 
   def thisSonorityLegal?(icp_form, array_of_sonorities)
